@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SRM Syllabus Finder</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+      /* ── Reset ─────────────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* ── Tokens ─────────────────────────────────────────────────── */
+      :root {
+        --bg: #f0f2f5;
+        --surface: #ffffff;
+        --primary: #1a237e; /* SRM navy */
+        --accent: #e53935; /* SRM red  */
+        --accent2: #1565c0;
+        --user-bg: #1a237e;
+        --user-fg: #ffffff;
+        --bot-bg: #ffffff;
+        --bot-fg: #212121;
+        --border: #e0e0e0;
+        --muted: #757575;
+        --radius: 14px;
+        --shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      }
+
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ─────────────────────────────────────────────────── */
+      header {
+        background: var(--primary);
+        color: #fff;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        flex-shrink: 0;
+      }
+      header .logo {
+        width: 38px;
+        height: 38px;
+        background: var(--accent);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 16px;
+        letter-spacing: -1px;
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-size: 1.1rem;
+        font-weight: 700;
+      }
+      header .subtitle {
+        font-size: 0.75rem;
+        opacity: 0.75;
+        margin-top: 1px;
+      }
+      header .stats {
+        margin-left: auto;
+        font-size: 0.75rem;
+        opacity: 0.75;
+        text-align: right;
+      }
+
+      /* ── Chat window ─────────────────────────────────────────────── */
+      #chat {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* ── Message bubbles ─────────────────────────────────────────── */
+      .msg {
+        display: flex;
+        gap: 8px;
+        max-width: 100%;
+        animation: fadeIn 0.2s ease;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .msg.user {
+        flex-direction: row-reverse;
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .msg.user .avatar {
+        background: var(--user-bg);
+        color: #fff;
+      }
+      .msg.bot .avatar {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .bubble {
+        padding: 10px 14px;
+        border-radius: var(--radius);
+        max-width: min(640px, calc(100% - 48px));
+        line-height: 1.55;
+        box-shadow: var(--shadow);
+        word-break: break-word;
+      }
+      .msg.user .bubble {
+        background: var(--user-bg);
+        color: var(--user-fg);
+        border-bottom-right-radius: 4px;
+      }
+      .msg.bot .bubble {
+        background: var(--bot-bg);
+        color: var(--bot-fg);
+        border-bottom-left-radius: 4px;
+      }
+
+      /* ── Markdown styles inside bot bubble ──────────────────────── */
+      .bubble h2 {
+        font-size: 1.1rem;
+        color: var(--primary);
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 2px solid var(--accent);
+      }
+      .bubble h3 {
+        font-size: 0.95rem;
+        color: var(--accent2);
+        margin: 14px 0 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .bubble strong {
+        color: var(--primary);
+      }
+      .bubble ul {
+        padding-left: 18px;
+      }
+      .bubble li {
+        margin: 3px 0;
+      }
+      .bubble p {
+        margin: 6px 0;
+      }
+      .bubble code {
+        background: #f5f5f5;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 0.85em;
+        color: var(--accent);
+      }
+      .bubble ol {
+        padding-left: 18px;
+      }
+      .bubble ol li {
+        margin: 4px 0;
+        font-size: 0.9rem;
+      }
+
+      /* Unit blocks */
+      .bubble h2 + p,
+      .bubble h3 ~ p {
+        font-size: 0.92rem;
+      }
+
+      /* ── Chips (quick examples) ──────────────────────────────────── */
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 12px 4px;
+        flex-shrink: 0;
+      }
+      .chip {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 5px 14px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 500;
+        transition:
+          background 0.15s,
+          box-shadow 0.15s;
+        box-shadow: var(--shadow);
+      }
+      .chip:hover {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      /* ── Input bar ───────────────────────────────────────────────── */
+      #inputbar {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding: 10px 12px;
+        flex-shrink: 0;
+      }
+      #inputwrap {
+        display: flex;
+        gap: 8px;
+        position: relative;
+      }
+      #q {
+        flex: 1;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        font-size: 0.95rem;
+        font-family: var(--font);
+        outline: none;
+        transition: border-color 0.2s;
+        background: var(--bg);
+      }
+      #q:focus {
+        border-color: var(--primary);
+        background: #fff;
+      }
+
+      #sendbtn {
+        padding: 10px 20px;
+        background: var(--primary);
+        color: #fff;
+        border: none;
+        border-radius: 24px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      #sendbtn:hover {
+        background: var(--accent2);
+      }
+      #sendbtn:active {
+        background: var(--accent);
+      }
+      #sendbtn:disabled {
+        background: #9e9e9e;
+        cursor: default;
+      }
+
+      /* ── Autocomplete dropdown ───────────────────────────────────── */
+      #suggestions {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 0;
+        right: 60px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+        max-height: 220px;
+        overflow-y: auto;
+        z-index: 100;
+        display: none;
+      }
+      .sug-item {
+        padding: 9px 14px;
+        cursor: pointer;
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        font-size: 0.88rem;
+      }
+      .sug-item:hover,
+      .sug-item.active {
+        background: #e8eaf6;
+      }
+      .sug-code {
+        font-weight: 700;
+        color: var(--primary);
+        flex-shrink: 0;
+      }
+      .sug-name {
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ── Typing indicator ────────────────────────────────────────── */
+      .typing .bubble {
+        padding: 12px 18px;
+      }
+      .dot-flashing {
+        position: relative;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--muted);
+        color: var(--muted);
+        animation: dotFlashing 1s infinite linear alternate;
+        animation-delay: 0.5s;
+        display: inline-block;
+      }
+      .dot-flashing::before,
+      .dot-flashing::after {
+        content: "";
+        display: inline-block;
+        position: absolute;
+        top: 0;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--muted);
+      }
+      .dot-flashing::before {
+        left: -15px;
+        animation: dotFlashing 1s infinite alternate;
+        animation-delay: 0s;
+      }
+      .dot-flashing::after {
+        left: 15px;
+        animation: dotFlashing 1s infinite alternate;
+        animation-delay: 1s;
+      }
+      @keyframes dotFlashing {
+        0% {
+          background: var(--muted);
+        }
+        100% {
+          background: #e0e0e0;
+        }
+      }
+
+      /* ── Scrollbar ───────────────────────────────────────────────── */
+      #chat::-webkit-scrollbar {
+        width: 4px;
+      }
+      #chat::-webkit-scrollbar-thumb {
+        background: #bdbdbd;
+        border-radius: 2px;
+      }
+
+      /* ── Error bubble ────────────────────────────────────────────── */
+      .error-bubble {
+        background: #ffebee;
+        border-left: 3px solid var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <header>
+      <div class="logo">SRM</div>
+      <div>
+        <h1>Syllabus Finder</h1>
+        <div class="subtitle">School of Computing — Regulations 2021</div>
+      </div>
+      <div class="stats" id="stats-badge"></div>
+    </header>
+
+    <!-- ── Chat ────────────────────────────────────────────────────────── -->
+    <div id="chat">
+      <!-- welcome message injected by JS -->
+    </div>
+
+    <!-- ── Quick-example chips ─────────────────────────────────────────── -->
+    <div class="chips" id="chips">
+      <span class="chip" onclick="sendQuery('21CSC201J')">21CSC201J</span>
+      <span class="chip" onclick="sendQuery('data structures')"
+        >Data Structures</span
+      >
+      <span class="chip" onclick="sendQuery('machine learning')"
+        >Machine Learning</span
+      >
+      <span class="chip" onclick="sendQuery('operating system')"
+        >Operating Systems</span
+      >
+      <span class="chip" onclick="sendQuery('21CSE354T')">21CSE354T</span>
+    </div>
+
+    <!-- ── Input bar ────────────────────────────────────────────────────── -->
+    <div id="inputbar">
+      <div id="inputwrap">
+        <div id="suggestions"></div>
+        <input
+          id="q"
+          type="text"
+          placeholder="Type a course code (e.g. 21CSC303T) or name…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="sendbtn" onclick="handleSend()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      /* ── Marked config ─────────────────────────────────────────────────── */
+      marked.setOptions({ breaks: true, gfm: true });
+
+      /* ── DOM refs ──────────────────────────────────────────────────────── */
+      const chat = document.getElementById("chat");
+      const input = document.getElementById("q");
+      const sendBtn = document.getElementById("sendbtn");
+      const sugBox = document.getElementById("suggestions");
+
+      /* ── State ─────────────────────────────────────────────────────────── */
+      let sugIndex = -1;
+      let sugItems = [];
+      let sugTimer = null;
+
+      /* ── Init ──────────────────────────────────────────────────────────── */
+      window.addEventListener("DOMContentLoaded", () => {
+        appendBotMsg(
+          "👋 **Welcome to SRM Syllabus Finder!**\n\n" +
+            "Ask me anything about your course syllabus.\n\n" +
+            "**Try:**\n" +
+            "- `21CSC201J` — search by course code\n" +
+            "- `data structures` — search by name\n" +
+            "- `machine learning syllabus` — natural language",
+        );
+        loadStats();
+        input.focus();
+      });
+
+      /* ── Stats badge ───────────────────────────────────────────────────── */
+      async function loadStats() {
+        try {
+          const r = await fetch("/api/stats");
+          if (!r.ok) return;
+          const d = await r.json();
+          document.getElementById("stats-badge").textContent =
+            `${d.total_courses} courses`;
+        } catch {}
+      }
+
+      /* ── Send flow ─────────────────────────────────────────────────────── */
+      async function handleSend() {
+        const q = input.value.trim();
+        if (!q) return;
+        sendQuery(q);
+      }
+
+      async function sendQuery(q) {
+        input.value = "";
+        hideSuggestions();
+        appendUserMsg(q);
+        const tid = appendTyping();
+        sendBtn.disabled = true;
+
+        try {
+          const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+          const data = await r.json();
+          removeTyping(tid);
+          if (r.ok) {
+            appendBotMsg(data.response || "_No response._");
+          } else {
+            appendBotMsg(
+              `⚠️ **Error ${r.status}:** ${data.detail || "Unknown error"}`,
+              true,
+            );
+          }
+        } catch (e) {
+          removeTyping(tid);
+          appendBotMsg(
+            "⚠️ **Cannot reach server.** Make sure the backend is running on port 8000.",
+            true,
+          );
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      }
+
+      /* ── Message builders ──────────────────────────────────────────────── */
+      let msgId = 0;
+
+      function appendUserMsg(text) {
+        const id = ++msgId;
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `
+    <div class="msg user" id="msg-${id}">
+      <div class="avatar">You</div>
+      <div class="bubble">${escHtml(text)}</div>
+    </div>`,
+        );
+        scrollToBottom();
+        return id;
+      }
+
+      function appendBotMsg(markdown, isError = false) {
+        const id = ++msgId;
+        const cls = isError ? "error-bubble" : "";
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `
+    <div class="msg bot" id="msg-${id}">
+      <div class="avatar">SRM</div>
+      <div class="bubble ${cls}">${marked.parse(markdown)}</div>
+    </div>`,
+        );
+        scrollToBottom();
+        return id;
+      }
+
+      function appendTyping() {
+        const id = ++msgId;
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `
+    <div class="msg bot typing" id="msg-${id}">
+      <div class="avatar">SRM</div>
+      <div class="bubble"><div class="dot-flashing"></div></div>
+    </div>`,
+        );
+        scrollToBottom();
+        return id;
+      }
+
+      function removeTyping(id) {
+        document.getElementById(`msg-${id}`)?.remove();
+      }
+
+      function scrollToBottom() {
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      function escHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /* ── Keyboard handling ─────────────────────────────────────────────── */
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (sugIndex >= 0 && sugItems[sugIndex]) {
+            selectSuggestion(sugIndex);
+          } else {
+            handleSend();
+          }
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          moveSug(1);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          moveSug(-1);
+          return;
+        }
+        if (e.key === "Escape") {
+          hideSuggestions();
+          return;
+        }
+      });
+
+      input.addEventListener("input", () => {
+        clearTimeout(sugTimer);
+        sugTimer = setTimeout(fetchSuggestions, 200);
+      });
+
+      /* ── Autocomplete ──────────────────────────────────────────────────── */
+      async function fetchSuggestions() {
+        const q = input.value.trim();
+        if (q.length < 2) {
+          hideSuggestions();
+          return;
+        }
+        try {
+          const r = await fetch(`/api/suggest?q=${encodeURIComponent(q)}`);
+          const d = await r.json();
+          sugItems = d.suggestions || [];
+          renderSuggestions();
+        } catch {}
+      }
+
+      function renderSuggestions() {
+        if (!sugItems.length) {
+          hideSuggestions();
+          return;
+        }
+        sugIndex = -1;
+        sugBox.innerHTML = sugItems
+          .map(
+            (s, i) =>
+              `<div class="sug-item" data-i="${i}" onclick="selectSuggestion(${i})">
+       <span class="sug-code">${escHtml(s.code)}</span>
+       <span class="sug-name">${escHtml(s.name)}</span>
+     </div>`,
+          )
+          .join("");
+        sugBox.style.display = "block";
+      }
+
+      function hideSuggestions() {
+        sugBox.style.display = "none";
+        sugIndex = -1;
+      }
+
+      function moveSug(dir) {
+        const items = sugBox.querySelectorAll(".sug-item");
+        if (!items.length) return;
+        items[sugIndex]?.classList.remove("active");
+        sugIndex = Math.max(-1, Math.min(items.length - 1, sugIndex + dir));
+        if (sugIndex >= 0) {
+          items[sugIndex].classList.add("active");
+          items[sugIndex].scrollIntoView({ block: "nearest" });
+          input.value = sugItems[sugIndex].code;
+        }
+      }
+
+      function selectSuggestion(i) {
+        const s = sugItems[i];
+        if (!s) return;
+        hideSuggestions();
+        sendQuery(s.code);
+      }
+
+      /* ── Close dropdown when clicking outside ──────────────────────────── */
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest("#inputwrap")) hideSuggestions();
+      });
+    </script>
+  </body>
+</html>
