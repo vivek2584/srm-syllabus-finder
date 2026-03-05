@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SRM Syllabus Finder</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -120,14 +121,14 @@
       }
 
       /* ── Markdown inside bot bubbles ─────────────────────────── */
-      .bubble h2 {
+      .bubble .content h2 {
         font-size: 1rem;
         font-weight: 600;
         margin-bottom: 8px;
         padding-bottom: 6px;
         border-bottom: 1px solid var(--border);
       }
-      .bubble h3 {
+      .bubble .content h3 {
         font-size: 0.85rem;
         font-weight: 600;
         color: var(--accent);
@@ -135,17 +136,42 @@
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      .bubble p { margin: 4px 0; }
-      .bubble ul, .bubble ol { padding-left: 18px; margin: 4px 0; }
-      .bubble li { margin: 2px 0; font-size: 0.88rem; }
-      .bubble strong { font-weight: 600; }
-      .bubble code {
+      .bubble .content p { margin: 4px 0; }
+      .bubble .content ul, .bubble .content ol { padding-left: 18px; margin: 4px 0; }
+      .bubble .content li { margin: 2px 0; font-size: 0.88rem; }
+      .bubble .content strong { font-weight: 600; }
+      .bubble .content code {
         background: var(--bg);
         border: 1px solid var(--border);
         border-radius: 4px;
         padding: 1px 5px;
         font-size: 0.82em;
         font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+
+      /* PDF Download Button */
+      .pdf-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 6px 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text);
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: var(--font);
+      }
+      .pdf-btn:hover {
+        background: var(--border);
+      }
+      .pdf-btn svg {
+        width: 14px;
+        height: 14px;
       }
 
       /* ── Error ───────────────────────────────────────────────── */
@@ -316,6 +342,7 @@
       const sugBox = document.getElementById('suggestions');
 
       let sugIndex = -1, sugItems = [], sugTimer = null;
+      let lastQueryContext = 'Syllabus';
 
       /* ── Init ─────────────────────────────────────────────── */
       window.addEventListener('DOMContentLoaded', () => {
@@ -354,19 +381,22 @@
       }
 
       async function sendQuery(q) {
+        lastQueryContext = q;
         input.value = '';
         hideSuggestions();
         clearWelcome();
         appendUserMsg(q);
         sendBtn.disabled = true;
 
-        if (isDirectSearch(q)) {
+        const isSyllabus = isDirectSearch(q);
+
+        if (isSyllabus) {
           const tid = appendTyping();
           try {
             const r = await fetch('/api/search?q=' + encodeURIComponent(q));
             const data = await r.json();
             removeEl(tid);
-            appendBotMsg(r.ok ? (data.response || '_No results._') : '**Error:** ' + (data.detail || 'Unknown'), !r.ok);
+            appendBotMsg(r.ok ? (data.response || '_No results._') : '**Error:** ' + (data.detail || 'Unknown'), !r.ok, true, isSyllabus);
           } catch {
             removeEl(tid);
             appendBotMsg('**Cannot reach server.** Is the backend running?', true);
@@ -393,7 +423,11 @@
           let buf = '';
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              const textIndicatesSyllabus = full.includes('L-T-P-C') || full.includes('Course Outcomes');
+              updateBotMsg(botId, full, false, true, textIndicatesSyllabus);
+              break;
+            }
             buf += dec.decode(value, { stream: true });
             const lines = buf.split('\n');
             buf = lines.pop();
@@ -425,10 +459,14 @@
         return id;
       }
 
-      function appendBotMsg(md, err = false) {
+      function appendBotMsg(md, err = false, done = false, showPdf = false) {
         const id = ++mid;
+        let html = `<div class="content">${marked.parse(md)}</div>`;
+        if (done && !err && showPdf) {
+            html += getPdfButtonHtml(id);
+        }
         chat.insertAdjacentHTML('beforeend',
-          `<div class="msg bot" id="m${id}"><div class="bubble${err ? ' error-bubble' : ''}">${marked.parse(md)}</div></div>`);
+          `<div class="msg bot" id="m${id}"><div class="bubble${err ? ' error-bubble' : ''}">${html}</div></div>`);
         scroll();
         return id;
       }
@@ -441,13 +479,83 @@
         return id;
       }
 
-      function updateBotMsg(id, md, err = false) {
+      function updateBotMsg(id, md, err = false, done = false, showPdf = false) {
         const el = document.getElementById('m' + id);
         if (!el) return;
         const b = el.querySelector('.bubble');
         b.className = 'bubble' + (err ? ' error-bubble' : '');
-        b.innerHTML = marked.parse(md);
+        let html = `<div class="content">${marked.parse(md)}</div>`;
+        if (done && !err && showPdf) {
+            html += getPdfButtonHtml(id);
+        }
+        b.innerHTML = html;
         scroll();
+      }
+
+      function getPdfButtonHtml(msgId) {
+        return `
+          <button class="pdf-btn" onclick="downloadPDF('m${msgId}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download PDF
+          </button>
+        `;
+      }
+
+      async function downloadPDF(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        
+        const btn = el.querySelector('.pdf-btn');
+        if (btn) btn.innerHTML = '<span class="dot-flashing" style="margin-right:8px;padding:0"><span></span><span></span><span></span></span> Generating...';
+
+        const contentHtml = el.querySelector('.content').innerHTML;
+
+        const printArea = document.createElement('div');
+        printArea.innerHTML = `
+          <div style="font-family: 'Inter', system-ui, sans-serif; color: #000; background: #fff; padding: 20px;">
+             <h1 style="border-bottom: 2px solid #efefef; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; color: #111827;">
+               ${esc(lastQueryContext)} - Syllabus
+             </h1>
+             <div class="pdf-body" style="font-size: 14px; line-height: 1.6;">
+               ${contentHtml}
+             </div>
+          </div>
+        `;
+
+        const style = document.createElement('style');
+        style.innerText = `
+          .pdf-body h2 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 10px; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+          .pdf-body h3 { font-size: 16px; font-weight: 600; margin-top: 15px; margin-bottom: 8px; color: #3b82f6; }
+          .pdf-body p { margin-bottom: 10px; }
+          .pdf-body ul, .pdf-body ol { margin-left: 20px; margin-bottom: 10px; }
+          .pdf-body li { margin-bottom: 5px; }
+          .pdf-body code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px; color: #000; }
+          .pdf-body strong { font-weight: 600; color: #000; }
+        `;
+        printArea.appendChild(style);
+
+        const filename = lastQueryContext.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_syllabus.pdf';
+
+        const opt = {
+          margin:       0.5,
+          filename:     filename,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true },
+          jsPDF:        { unit: 'in', format: 'A4', orientation: 'portrait' }
+        };
+
+        try {
+          await html2pdf().set(opt).from(printArea).save();
+        } catch (err) {
+          console.error('PDF Generation Failed', err);
+          alert('Failed to generate PDF.');
+        } finally {
+          if (btn) btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF`;
+        }
       }
 
       function appendTyping() {
