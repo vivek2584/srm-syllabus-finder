@@ -331,7 +331,11 @@ STOP_WORDS = {"WHAT", "WHICH", "WHERE", "WHEN", "HOW", "WHO", "ARE", "THE",
               "PREREQUISITES", "PREREQUISITE", "TEXTBOOKS", "TEXTBOOK",
               "EXPLAIN", "DESCRIBE", "LIST", "COMPARE", "COVER", "COVERS",
               "TOPICS", "TOPIC", "DETAILS", "DETAIL", "BETWEEN", "VS",
-              "DIFFERENCE", "DIFFERENCES", "VERSUS", "WHAT'S", "WHATS"}
+              "DIFFERENCE", "DIFFERENCES", "VERSUS", "WHAT'S", "WHATS",
+              "FULL", "COMPLETE", "ENTIRE", "WHOLE", "BRIEF", "SHORT",
+              "SUMMARY", "OVERVIEW", "DETAILED", "INFO", "INFORMATION",
+              "GIVE", "SHOW", "PLEASE", "NEED", "WANT", "KNOW", "GET",
+              "SRM", "SRMIST", "UNIVERSITY"}
 
 RE_CREDIT = re.compile(r'(\d+)\s*(?:credit|credits)\b', re.IGNORECASE)
 RE_CATEGORY = re.compile(
