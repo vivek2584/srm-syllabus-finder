@@ -121,7 +121,7 @@ def main():
     # Delete existing collection if it exists, then recreate
     try:
         client.delete_collection(COLLECTION)
-    except ValueError:
+    except Exception:
         pass
 
     collection = client.create_collection(
