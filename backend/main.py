@@ -7,7 +7,7 @@ Endpoints:
   GET  /api/course/<code>          fetch one course by exact code
   GET  /api/suggest?q=<partial>    autocomplete suggestions
   GET  /api/stats                  database statistics
-  POST /api/chat                   AI-powered Q&A (RAG with Gemini)
+  POST /api/chat                   AI-powered Q&A (RAG with Groq)
 
 Static frontend is served from ../frontend/
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 import chromadb
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -42,22 +42,23 @@ app.add_middleware(
 
 RE_CODE = re.compile(r'\b(21[A-Z]{2,5}\d{3}[A-Z]?)\b', re.IGNORECASE)
 
-# ── Gemini setup ──────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-gemini_model = None
+# ── Groq setup ───────────────────────────────────────────────────────────────
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+groq_client = None
 
-def get_gemini_model():
-    global gemini_model
-    if gemini_model is None:
-        if not GEMINI_API_KEY:
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+def get_groq_client():
+    global groq_client
+    if groq_client is None:
+        if not GROQ_API_KEY:
             raise HTTPException(
                 status_code=503,
-                detail="GEMINI_API_KEY not set. Add it as an environment variable.",
+                detail="GROQ_API_KEY not set. Add it as an environment variable.",
             )
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel("gemini-2.0-flash")
-    return gemini_model
+        from groq import Groq
+        groq_client = Groq(api_key=GROQ_API_KEY)
+    return groq_client
 
 
 # ── ChromaDB setup ────────────────────────────────────────────────────────────
@@ -326,20 +327,22 @@ async def chat_endpoint(request: Request):
 
 Student's question: {question}"""
 
-    # 3) Call Gemini
-    model = get_gemini_model()
-
+    # 3) Call Groq (Llama 3.3 70B)
     async def generate_stream():
         try:
-            response = model.generate_content(
-                [
-                    {"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_prompt}]},
+            client = get_groq_client()
+            stream = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
                 ],
                 stream=True,
             )
-            for chunk in response:
-                if chunk.text:
-                    yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+            for chunk in stream:
+                text = chunk.choices[0].delta.content
+                if text:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

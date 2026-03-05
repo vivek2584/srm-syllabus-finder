@@ -40,12 +40,12 @@ else
   echo "Vector index ready."
 fi
 
-# 4) Check for Gemini API key
-if [ -z "$GEMINI_API_KEY" ]; then
+# 4) Check for Groq API key
+if [ -z "$GROQ_API_KEY" ]; then
   echo ""
-  echo "WARNING: GEMINI_API_KEY is not set. AI chat will not work."
-  echo "Get a free key at: https://aistudio.google.com/apikey"
-  echo "Then run: export GEMINI_API_KEY=your_key_here"
+  echo "WARNING: GROQ_API_KEY is not set. AI chat will not work."
+  echo "Get a free key at: https://console.groq.com/keys"
+  echo "Then run: export GROQ_API_KEY=your_key_here"
   echo ""
 fi
 
