@@ -3,31 +3,35 @@
 main.py — FastAPI backend for SRM Syllabus Finder.
 
 Endpoints:
-  GET /api/search?q=<query>       search by code or name
-  GET /api/course/<code>          fetch one course by exact code
-  GET /api/suggest?q=<partial>    autocomplete suggestions
-  GET /api/stats                  database statistics
+  GET  /api/search?q=<query>       search by code or name
+  GET  /api/course/<code>          fetch one course by exact code
+  GET  /api/suggest?q=<partial>    autocomplete suggestions
+  GET  /api/stats                  database statistics
+  POST /api/chat                   AI-powered Q&A (RAG with Gemini)
 
 Static frontend is served from ../frontend/
 """
 
 import json
+import os
 import re
 import sqlite3
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+import chromadb
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT         = Path(__file__).parent.parent
 DB_PATH      = ROOT / "data" / "syllabi.db"
+CHROMA_DIR   = ROOT / "data" / "chroma"
 FRONTEND_DIR = ROOT / "frontend"
 
 # ── App setup ─────────────────────────────────────────────────────────────────
-app = FastAPI(title="SRM Syllabus Finder", version="1.0.0")
+app = FastAPI(title="SRM Syllabus Finder", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +41,39 @@ app.add_middleware(
 )
 
 RE_CODE = re.compile(r'\b(21[A-Z]{2,5}\d{3}[A-Z]?)\b', re.IGNORECASE)
+
+# ── Gemini setup ──────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+gemini_model = None
+
+def get_gemini_model():
+    global gemini_model
+    if gemini_model is None:
+        if not GEMINI_API_KEY:
+            raise HTTPException(
+                status_code=503,
+                detail="GEMINI_API_KEY not set. Add it as an environment variable.",
+            )
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    return gemini_model
+
+
+# ── ChromaDB setup ────────────────────────────────────────────────────────────
+chroma_collection = None
+
+def get_chroma():
+    global chroma_collection
+    if chroma_collection is None:
+        if not CHROMA_DIR.exists():
+            raise HTTPException(
+                status_code=503,
+                detail="Vector index not found. Run: python scripts/build_vectors.py",
+            )
+        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+        chroma_collection = client.get_collection("syllabus")
+    return chroma_collection
 
 
 # ── DB helper ─────────────────────────────────────────────────────────────────
@@ -244,6 +281,70 @@ def stats():
         }
     finally:
         conn.close()
+
+
+# ── AI Chat endpoint (RAG) ────────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are the SRM Syllabus Assistant, an AI helper for students at SRM Institute of Science and Technology (School of Computing, Regulations 2021).
+
+Your job:
+- Answer questions about courses, syllabi, prerequisites, credits, units, textbooks, and course outcomes using ONLY the provided syllabus context.
+- Be helpful, clear, and concise. Use markdown formatting for readability.
+- If the context doesn't contain enough information to answer, say so honestly — don't make things up.
+- When referencing courses, always mention the course code and name.
+- You can compare courses, suggest prerequisites, explain what a unit covers, list textbooks, etc.
+- Keep responses focused and student-friendly.
+
+IMPORTANT: Only use information from the provided context. Do not invent course details."""
+
+
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    body = await request.json()
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(400, "No question provided")
+
+    # 1) Retrieve relevant chunks from ChromaDB
+    collection = get_chroma()
+    results = collection.query(
+        query_texts=[question],
+        n_results=8,
+    )
+
+    context_chunks = results["documents"][0] if results["documents"] else []
+
+    if not context_chunks:
+        return {"response": "I couldn't find any relevant syllabus information for your question. Try asking about a specific course code or topic."}
+
+    # 2) Build prompt with context
+    context_text = "\n\n---\n\n".join(context_chunks)
+    user_prompt = f"""Based on the following syllabus information, answer the student's question.
+
+=== SYLLABUS CONTEXT ===
+{context_text}
+=== END CONTEXT ===
+
+Student's question: {question}"""
+
+    # 3) Call Gemini
+    model = get_gemini_model()
+
+    async def generate_stream():
+        try:
+            response = model.generate_content(
+                [
+                    {"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_prompt}]},
+                ],
+                stream=True,
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 
 # ── Serve frontend ─────────────────────────────────────────────────────────────

@@ -1,1 +1,5 @@
 computing-programmes-syllabus-2021.pdf
+.venv/
+__pycache__/
+data/chroma/
+*.pyc

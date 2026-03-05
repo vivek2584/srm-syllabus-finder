@@ -379,6 +379,20 @@
         background: #ffebee;
         border-left: 3px solid var(--accent);
       }
+
+      /* ── AI badge ────────────────────────────────────────────────── */
+      .ai-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        font-size: 0.6rem;
+        padding: 1px 6px;
+        border-radius: 8px;
+        margin-left: 6px;
+        font-weight: 600;
+        vertical-align: middle;
+        letter-spacing: 0.5px;
+      }
     </style>
   </head>
   <body>
@@ -386,7 +400,7 @@
     <header>
       <div class="logo">SRM</div>
       <div>
-        <h1>Syllabus Finder</h1>
+        <h1>Syllabus Finder <span class="ai-badge">AI</span></h1>
         <div class="subtitle">School of Computing — Regulations 2021</div>
       </div>
       <div class="stats" id="stats-badge"></div>
@@ -399,17 +413,25 @@
 
     <!-- ── Quick-example chips ─────────────────────────────────────────── -->
     <div class="chips" id="chips">
+      <span
+        class="chip"
+        onclick="sendQuery('What are the prerequisites for Data Structures?')"
+        >Prerequisites for DSA</span
+      >
+      <span
+        class="chip"
+        onclick="sendQuery('Which courses cover machine learning?')"
+        >ML Courses</span
+      >
+      <span
+        class="chip"
+        onclick="sendQuery('What textbooks are used for Operating Systems?')"
+        >OS Textbooks</span
+      >
+      <span class="chip" onclick="sendQuery('Compare 21CSC201J and 21CSC202J')"
+        >Compare Courses</span
+      >
       <span class="chip" onclick="sendQuery('21CSC201J')">21CSC201J</span>
-      <span class="chip" onclick="sendQuery('data structures')"
-        >Data Structures</span
-      >
-      <span class="chip" onclick="sendQuery('machine learning')"
-        >Machine Learning</span
-      >
-      <span class="chip" onclick="sendQuery('operating system')"
-        >Operating Systems</span
-      >
-      <span class="chip" onclick="sendQuery('21CSE354T')">21CSE354T</span>
     </div>
 
     <!-- ── Input bar ────────────────────────────────────────────────────── -->
@@ -419,7 +441,7 @@
         <input
           id="q"
           type="text"
-          placeholder="Type a course code (e.g. 21CSC303T) or name…"
+          placeholder="Ask anything about your syllabus..."
           autocomplete="off"
           spellcheck="false"
         />
@@ -445,12 +467,14 @@
       /* ── Init ──────────────────────────────────────────────────────────── */
       window.addEventListener("DOMContentLoaded", () => {
         appendBotMsg(
-          "👋 **Welcome to SRM Syllabus Finder!**\n\n" +
-            "Ask me anything about your course syllabus.\n\n" +
-            "**Try:**\n" +
-            "- `21CSC201J` — search by course code\n" +
-            "- `data structures` — search by name\n" +
-            "- `machine learning syllabus` — natural language",
+          "**Welcome to SRM Syllabus Finder!**\n\n" +
+            "I'm an AI assistant that can answer questions about your course syllabi.\n\n" +
+            "**Try asking me:**\n" +
+            "- `What are the prerequisites for Data Structures?`\n" +
+            "- `Which courses cover machine learning?`\n" +
+            "- `What does Unit 3 of Operating Systems cover?`\n" +
+            "- `Compare two courses`\n" +
+            "- Or just type a course code like `21CSC201J`",
         );
         loadStats();
         input.focus();
@@ -467,6 +491,12 @@
         } catch {}
       }
 
+      /* ── Detect if query is a direct course code/name search ─────────── */
+      function isDirectSearch(q) {
+        // Exact course code pattern
+        return /^\s*21[A-Z]{2,5}\d{3}[A-Z]?\s*$/i.test(q);
+      }
+
       /* ── Send flow ─────────────────────────────────────────────────────── */
       async function handleSend() {
         const q = input.value.trim();
@@ -478,25 +508,103 @@
         input.value = "";
         hideSuggestions();
         appendUserMsg(q);
-        const tid = appendTyping();
         sendBtn.disabled = true;
 
-        try {
-          const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-          const data = await r.json();
-          removeTyping(tid);
-          if (r.ok) {
-            appendBotMsg(data.response || "_No response._");
-          } else {
+        // If it's a direct course code, use the fast search endpoint
+        if (isDirectSearch(q)) {
+          const tid = appendTyping();
+          try {
+            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const data = await r.json();
+            removeTyping(tid);
+            if (r.ok) {
+              appendBotMsg(data.response || "_No response._");
+            } else {
+              appendBotMsg(
+                `**Error ${r.status}:** ${data.detail || "Unknown error"}`,
+                true,
+              );
+            }
+          } catch (e) {
+            removeTyping(tid);
             appendBotMsg(
-              `⚠️ **Error ${r.status}:** ${data.detail || "Unknown error"}`,
+              "**Cannot reach server.** Make sure the backend is running.",
+              true,
+            );
+          } finally {
+            sendBtn.disabled = false;
+            input.focus();
+          }
+          return;
+        }
+
+        // Otherwise, use the AI chat endpoint with streaming
+        const botMsgId = appendBotMsgEmpty();
+        let fullText = "";
+
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: q }),
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            updateBotMsg(
+              botMsgId,
+              `**Error ${response.status}:** ${err.detail || "Unknown error"}`,
+              true,
+            );
+            sendBtn.disabled = false;
+            input.focus();
+            return;
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); // keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const payload = line.slice(6).trim();
+              if (payload === "[DONE]") continue;
+
+              try {
+                const data = JSON.parse(payload);
+                if (data.error) {
+                  updateBotMsg(botMsgId, `**Error:** ${data.error}`, true);
+                  sendBtn.disabled = false;
+                  input.focus();
+                  return;
+                }
+                if (data.text) {
+                  fullText += data.text;
+                  updateBotMsg(botMsgId, fullText);
+                }
+              } catch {}
+            }
+          }
+
+          if (!fullText) {
+            updateBotMsg(
+              botMsgId,
+              "I couldn't generate a response. Please try rephrasing your question.",
               true,
             );
           }
         } catch (e) {
-          removeTyping(tid);
-          appendBotMsg(
-            "⚠️ **Cannot reach server.** Make sure the backend is running on port 8000.",
+          updateBotMsg(
+            botMsgId,
+            "**Cannot reach server.** Make sure the backend is running.",
             true,
           );
         } finally {
@@ -535,6 +643,29 @@
         );
         scrollToBottom();
         return id;
+      }
+
+      function appendBotMsgEmpty() {
+        const id = ++msgId;
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `
+    <div class="msg bot" id="msg-${id}">
+      <div class="avatar">SRM</div>
+      <div class="bubble"><span class="dot-flashing"></span></div>
+    </div>`,
+        );
+        scrollToBottom();
+        return id;
+      }
+
+      function updateBotMsg(id, markdown, isError = false) {
+        const el = document.getElementById(`msg-${id}`);
+        if (!el) return;
+        const bubble = el.querySelector(".bubble");
+        bubble.className = "bubble" + (isError ? " error-bubble" : "");
+        bubble.innerHTML = marked.parse(markdown);
+        scrollToBottom();
       }
 
       function appendTyping() {
