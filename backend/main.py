@@ -307,10 +307,30 @@ async def chat_endpoint(request: Request):
 
     # 1) Retrieve relevant chunks from ChromaDB
     collection = get_chroma()
-    results = collection.query(
-        query_texts=[question],
-        n_results=8,
-    )
+
+    # If question mentions course codes, use metadata filtering to guarantee
+    # we fetch chunks for those specific courses (semantic search alone fails
+    # on alphanumeric codes like "21CSC201J").
+    mentioned_codes = [m.group(1).upper() for m in RE_CODE.finditer(question)]
+
+    if mentioned_codes:
+        # Fetch chunks for each mentioned course via metadata filter
+        if len(mentioned_codes) == 1:
+            where_filter = {"code": mentioned_codes[0]}
+        else:
+            where_filter = {"code": {"$in": mentioned_codes}}
+
+        results = collection.query(
+            query_texts=[question],
+            n_results=12,
+            where=where_filter,
+        )
+    else:
+        # Pure semantic search for general questions
+        results = collection.query(
+            query_texts=[question],
+            n_results=8,
+        )
 
     context_chunks = results["documents"][0] if results["documents"] else []
 

@@ -6,140 +6,106 @@
     <title>SRM Syllabus Finder</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-      /* ── Reset ─────────────────────────────────────────────────── */
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --text: #1a1a1a;
+        --text-secondary: #6b7280;
+        --border: #e5e7eb;
+        --primary: #111827;
+        --primary-hover: #374151;
+        --user-bg: #111827;
+        --user-fg: #ffffff;
+        --bot-bg: #f3f4f6;
+        --bot-fg: #1a1a1a;
+        --accent: #3b82f6;
+        --error-bg: #fef2f2;
+        --error-border: #ef4444;
+        --font: 'Inter', system-ui, -apple-system, sans-serif;
       }
 
-      /* ── Tokens ─────────────────────────────────────────────────── */
-      :root {
-        --bg: #f0f2f5;
-        --surface: #ffffff;
-        --primary: #1a237e; /* SRM navy */
-        --accent: #e53935; /* SRM red  */
-        --accent2: #1565c0;
-        --user-bg: #1a237e;
-        --user-fg: #ffffff;
-        --bot-bg: #ffffff;
-        --bot-fg: #212121;
-        --border: #e0e0e0;
-        --muted: #757575;
-        --radius: 14px;
-        --shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-        --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0a0a;
+          --surface: #111111;
+          --text: #e5e5e5;
+          --text-secondary: #9ca3af;
+          --border: #1f1f1f;
+          --primary: #e5e5e5;
+          --primary-hover: #d4d4d4;
+          --user-bg: #e5e5e5;
+          --user-fg: #0a0a0a;
+          --bot-bg: #1a1a1a;
+          --bot-fg: #e5e5e5;
+          --accent: #60a5fa;
+          --error-bg: #1c0a0a;
+          --error-border: #dc2626;
+        }
       }
 
       body {
         font-family: var(--font);
         background: var(--bg);
+        color: var(--text);
         height: 100dvh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        -webkit-font-smoothing: antialiased;
       }
 
-      /* ── Header ─────────────────────────────────────────────────── */
+      /* ── Header ──────────────────────────────────────────────── */
       header {
-        background: var(--primary);
-        color: #fff;
-        padding: 12px 20px;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        flex-shrink: 0;
         display: flex;
         align-items: center;
-        gap: 12px;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-        flex-shrink: 0;
-      }
-      header .logo {
-        width: 38px;
-        height: 38px;
-        background: var(--accent);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 900;
-        font-size: 16px;
-        letter-spacing: -1px;
-        flex-shrink: 0;
+        justify-content: space-between;
       }
       header h1 {
-        font-size: 1.1rem;
-        font-weight: 700;
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
-      header .subtitle {
+      header .meta {
         font-size: 0.75rem;
-        opacity: 0.75;
-        margin-top: 1px;
-      }
-      header .stats {
-        margin-left: auto;
-        font-size: 0.75rem;
-        opacity: 0.75;
-        text-align: right;
+        color: var(--text-secondary);
       }
 
-      /* ── Chat window ─────────────────────────────────────────────── */
+      /* ── Chat ────────────────────────────────────────────────── */
       #chat {
         flex: 1;
         overflow-y: auto;
-        padding: 16px 12px;
+        padding: 24px 16px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
       }
+      #chat::-webkit-scrollbar { width: 0; }
 
-      /* ── Message bubbles ─────────────────────────────────────────── */
+      /* ── Messages ────────────────────────────────────────────── */
       .msg {
         display: flex;
-        gap: 8px;
+        gap: 0;
         max-width: 100%;
-        animation: fadeIn 0.2s ease;
+        animation: fadeUp 0.15s ease-out;
       }
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-          transform: translateY(6px);
-        }
-        to {
-          opacity: 1;
-        }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; }
       }
-
-      .msg.user {
-        flex-direction: row-reverse;
-      }
-
-      .avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.75rem;
-        font-weight: 700;
-        flex-shrink: 0;
-        margin-top: 2px;
-      }
-      .msg.user .avatar {
-        background: var(--user-bg);
-        color: #fff;
-      }
-      .msg.bot .avatar {
-        background: var(--accent);
-        color: #fff;
-      }
+      .msg.user { justify-content: flex-end; }
 
       .bubble {
-        padding: 10px 14px;
-        border-radius: var(--radius);
-        max-width: min(640px, calc(100% - 48px));
-        line-height: 1.55;
-        box-shadow: var(--shadow);
+        padding: 10px 16px;
+        border-radius: 18px;
+        max-width: min(680px, 85%);
+        line-height: 1.6;
+        font-size: 0.9rem;
         word-break: break-word;
       }
       .msg.user .bubble {
@@ -153,351 +119,234 @@
         border-bottom-left-radius: 4px;
       }
 
-      /* ── Markdown styles inside bot bubble ──────────────────────── */
+      /* ── Markdown inside bot bubbles ─────────────────────────── */
       .bubble h2 {
-        font-size: 1.1rem;
-        color: var(--primary);
-        margin-bottom: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 8px;
         padding-bottom: 6px;
-        border-bottom: 2px solid var(--accent);
+        border-bottom: 1px solid var(--border);
       }
       .bubble h3 {
-        font-size: 0.95rem;
-        color: var(--accent2);
-        margin: 14px 0 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--accent);
+        margin: 12px 0 4px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.04em;
       }
-      .bubble strong {
-        color: var(--primary);
-      }
-      .bubble ul {
-        padding-left: 18px;
-      }
-      .bubble li {
-        margin: 3px 0;
-      }
-      .bubble p {
-        margin: 6px 0;
-      }
+      .bubble p { margin: 4px 0; }
+      .bubble ul, .bubble ol { padding-left: 18px; margin: 4px 0; }
+      .bubble li { margin: 2px 0; font-size: 0.88rem; }
+      .bubble strong { font-weight: 600; }
       .bubble code {
-        background: #f5f5f5;
+        background: var(--bg);
         border: 1px solid var(--border);
         border-radius: 4px;
         padding: 1px 5px;
-        font-size: 0.85em;
-        color: var(--accent);
-      }
-      .bubble ol {
-        padding-left: 18px;
-      }
-      .bubble ol li {
-        margin: 4px 0;
-        font-size: 0.9rem;
+        font-size: 0.82em;
+        font-family: 'SF Mono', 'Fira Code', monospace;
       }
 
-      /* Unit blocks */
-      .bubble h2 + p,
-      .bubble h3 ~ p {
-        font-size: 0.92rem;
+      /* ── Error ───────────────────────────────────────────────── */
+      .error-bubble {
+        background: var(--error-bg) !important;
+        border-left: 2px solid var(--error-border);
       }
 
-      /* ── Chips (quick examples) ──────────────────────────────────── */
-      .chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 0 12px 4px;
-        flex-shrink: 0;
-      }
-      .chip {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        padding: 5px 14px;
-        font-size: 0.8rem;
-        cursor: pointer;
-        color: var(--primary);
-        font-weight: 500;
-        transition:
-          background 0.15s,
-          box-shadow 0.15s;
-        box-shadow: var(--shadow);
-      }
-      .chip:hover {
-        background: var(--primary);
-        color: #fff;
-        border-color: var(--primary);
-      }
-
-      /* ── Input bar ───────────────────────────────────────────────── */
+      /* ── Input ───────────────────────────────────────────────── */
       #inputbar {
+        padding: 12px 16px 16px;
         background: var(--surface);
         border-top: 1px solid var(--border);
-        padding: 10px 12px;
         flex-shrink: 0;
       }
       #inputwrap {
         display: flex;
         gap: 8px;
         position: relative;
+        max-width: 720px;
+        margin: 0 auto;
       }
       #q {
         flex: 1;
-        padding: 10px 14px;
+        padding: 10px 16px;
         border: 1px solid var(--border);
-        border-radius: 24px;
-        font-size: 0.95rem;
+        border-radius: 12px;
+        font-size: 0.9rem;
         font-family: var(--font);
         outline: none;
-        transition: border-color 0.2s;
         background: var(--bg);
+        color: var(--text);
+        transition: border-color 0.15s;
       }
-      #q:focus {
-        border-color: var(--primary);
-        background: #fff;
-      }
+      #q::placeholder { color: var(--text-secondary); }
+      #q:focus { border-color: var(--accent); }
 
       #sendbtn {
-        padding: 10px 20px;
+        padding: 10px 18px;
         background: var(--primary);
-        color: #fff;
+        color: var(--bg);
         border: none;
-        border-radius: 24px;
-        font-size: 0.9rem;
-        font-weight: 600;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        font-family: var(--font);
         cursor: pointer;
         transition: background 0.15s;
         flex-shrink: 0;
       }
-      #sendbtn:hover {
-        background: var(--accent2);
-      }
-      #sendbtn:active {
-        background: var(--accent);
-      }
-      #sendbtn:disabled {
-        background: #9e9e9e;
-        cursor: default;
-      }
+      #sendbtn:hover { background: var(--primary-hover); }
+      #sendbtn:disabled { opacity: 0.4; cursor: default; }
 
-      /* ── Autocomplete dropdown ───────────────────────────────────── */
+      /* ── Suggestions dropdown ─────────────────────────────────── */
       #suggestions {
         position: absolute;
-        bottom: calc(100% + 6px);
+        bottom: calc(100% + 4px);
         left: 0;
-        right: 60px;
+        right: 80px;
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 10px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-        max-height: 220px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        max-height: 200px;
         overflow-y: auto;
         z-index: 100;
         display: none;
       }
       .sug-item {
-        padding: 9px 14px;
+        padding: 8px 14px;
         cursor: pointer;
         display: flex;
         gap: 10px;
         align-items: baseline;
-        font-size: 0.88rem;
+        font-size: 0.85rem;
+        transition: background 0.1s;
       }
-      .sug-item:hover,
-      .sug-item.active {
-        background: #e8eaf6;
-      }
+      .sug-item:first-child { border-radius: 10px 10px 0 0; }
+      .sug-item:last-child { border-radius: 0 0 10px 10px; }
+      .sug-item:hover, .sug-item.active { background: var(--bot-bg); }
       .sug-code {
-        font-weight: 700;
-        color: var(--primary);
+        font-weight: 600;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.8rem;
+        color: var(--accent);
         flex-shrink: 0;
       }
       .sug-name {
-        color: var(--muted);
+        color: var(--text-secondary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
 
-      /* ── Typing indicator ────────────────────────────────────────── */
-      .typing .bubble {
-        padding: 12px 18px;
-      }
+      /* ── Typing dots ─────────────────────────────────────────── */
       .dot-flashing {
-        position: relative;
-        width: 10px;
-        height: 10px;
-        border-radius: 5px;
-        background: var(--muted);
-        color: var(--muted);
-        animation: dotFlashing 1s infinite linear alternate;
-        animation-delay: 0.5s;
-        display: inline-block;
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px 0;
       }
-      .dot-flashing::before,
-      .dot-flashing::after {
-        content: "";
-        display: inline-block;
-        position: absolute;
-        top: 0;
-        width: 10px;
-        height: 10px;
-        border-radius: 5px;
-        background: var(--muted);
+      .dot-flashing span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--text-secondary);
+        animation: blink 1.4s infinite both;
       }
-      .dot-flashing::before {
-        left: -15px;
-        animation: dotFlashing 1s infinite alternate;
-        animation-delay: 0s;
-      }
-      .dot-flashing::after {
-        left: 15px;
-        animation: dotFlashing 1s infinite alternate;
-        animation-delay: 1s;
-      }
-      @keyframes dotFlashing {
-        0% {
-          background: var(--muted);
-        }
-        100% {
-          background: #e0e0e0;
-        }
+      .dot-flashing span:nth-child(2) { animation-delay: 0.2s; }
+      .dot-flashing span:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes blink {
+        0%, 80%, 100% { opacity: 0.2; }
+        40% { opacity: 1; }
       }
 
-      /* ── Scrollbar ───────────────────────────────────────────────── */
-      #chat::-webkit-scrollbar {
-        width: 4px;
+      /* ── Welcome state ───────────────────────────────────────── */
+      .welcome {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        gap: 8px;
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 40px 20px;
       }
-      #chat::-webkit-scrollbar-thumb {
-        background: #bdbdbd;
-        border-radius: 2px;
-      }
-
-      /* ── Error bubble ────────────────────────────────────────────── */
-      .error-bubble {
-        background: #ffebee;
-        border-left: 3px solid var(--accent);
-      }
-
-      /* ── AI badge ────────────────────────────────────────────────── */
-      .ai-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #fff;
-        font-size: 0.6rem;
-        padding: 1px 6px;
-        border-radius: 8px;
-        margin-left: 6px;
+      .welcome h2 {
+        font-size: 1.1rem;
         font-weight: 600;
-        vertical-align: middle;
-        letter-spacing: 0.5px;
+        color: var(--text);
+      }
+      .welcome p {
+        font-size: 0.85rem;
+        max-width: 360px;
+        line-height: 1.5;
+      }
+
+      /* ── Responsive ──────────────────────────────────────────── */
+      @media (max-width: 480px) {
+        header { padding: 12px 16px; }
+        #chat { padding: 16px 10px; }
+        .bubble { max-width: 92%; padding: 8px 12px; }
       }
     </style>
   </head>
   <body>
-    <!-- ── Header ──────────────────────────────────────────────────────── -->
     <header>
-      <div class="logo">SRM</div>
-      <div>
-        <h1>Syllabus Finder <span class="ai-badge">AI</span></h1>
-        <div class="subtitle">School of Computing — Regulations 2021</div>
-      </div>
-      <div class="stats" id="stats-badge"></div>
+      <h1>SRM Syllabus Finder</h1>
+      <span class="meta" id="stats-badge"></span>
     </header>
 
-    <!-- ── Chat ────────────────────────────────────────────────────────── -->
-    <div id="chat">
-      <!-- welcome message injected by JS -->
-    </div>
+    <div id="chat"></div>
 
-    <!-- ── Quick-example chips ─────────────────────────────────────────── -->
-    <div class="chips" id="chips">
-      <span
-        class="chip"
-        onclick="sendQuery('What are the prerequisites for Data Structures?')"
-        >Prerequisites for DSA</span
-      >
-      <span
-        class="chip"
-        onclick="sendQuery('Which courses cover machine learning?')"
-        >ML Courses</span
-      >
-      <span
-        class="chip"
-        onclick="sendQuery('What textbooks are used for Operating Systems?')"
-        >OS Textbooks</span
-      >
-      <span class="chip" onclick="sendQuery('Compare 21CSC201J and 21CSC202J')"
-        >Compare Courses</span
-      >
-      <span class="chip" onclick="sendQuery('21CSC201J')">21CSC201J</span>
-    </div>
-
-    <!-- ── Input bar ────────────────────────────────────────────────────── -->
     <div id="inputbar">
       <div id="inputwrap">
         <div id="suggestions"></div>
-        <input
-          id="q"
-          type="text"
-          placeholder="Ask anything about your syllabus..."
-          autocomplete="off"
-          spellcheck="false"
-        />
+        <input id="q" type="text" placeholder="Ask about any course or topic..." autocomplete="off" spellcheck="false" />
         <button id="sendbtn" onclick="handleSend()">Send</button>
       </div>
     </div>
 
     <script>
-      /* ── Marked config ─────────────────────────────────────────────────── */
       marked.setOptions({ breaks: true, gfm: true });
 
-      /* ── DOM refs ──────────────────────────────────────────────────────── */
-      const chat = document.getElementById("chat");
-      const input = document.getElementById("q");
-      const sendBtn = document.getElementById("sendbtn");
-      const sugBox = document.getElementById("suggestions");
+      const chat = document.getElementById('chat');
+      const input = document.getElementById('q');
+      const sendBtn = document.getElementById('sendbtn');
+      const sugBox = document.getElementById('suggestions');
 
-      /* ── State ─────────────────────────────────────────────────────────── */
-      let sugIndex = -1;
-      let sugItems = [];
-      let sugTimer = null;
+      let sugIndex = -1, sugItems = [], sugTimer = null;
 
-      /* ── Init ──────────────────────────────────────────────────────────── */
-      window.addEventListener("DOMContentLoaded", () => {
-        appendBotMsg(
-          "**Welcome to SRM Syllabus Finder!**\n\n" +
-            "I'm an AI assistant that can answer questions about your course syllabi.\n\n" +
-            "**Try asking me:**\n" +
-            "- `What are the prerequisites for Data Structures?`\n" +
-            "- `Which courses cover machine learning?`\n" +
-            "- `What does Unit 3 of Operating Systems cover?`\n" +
-            "- `Compare two courses`\n" +
-            "- Or just type a course code like `21CSC201J`",
-        );
+      /* ── Init ─────────────────────────────────────────────── */
+      window.addEventListener('DOMContentLoaded', () => {
+        chat.innerHTML = `
+          <div class="welcome">
+            <h2>Ask anything about your syllabus</h2>
+            <p>Search by course code, ask about prerequisites, compare courses, or explore topics.</p>
+          </div>`;
         loadStats();
         input.focus();
       });
 
-      /* ── Stats badge ───────────────────────────────────────────────────── */
       async function loadStats() {
         try {
-          const r = await fetch("/api/stats");
+          const r = await fetch('/api/stats');
           if (!r.ok) return;
           const d = await r.json();
-          document.getElementById("stats-badge").textContent =
-            `${d.total_courses} courses`;
+          document.getElementById('stats-badge').textContent = d.total_courses + ' courses';
         } catch {}
       }
 
-      /* ── Detect if query is a direct course code/name search ─────────── */
       function isDirectSearch(q) {
-        // Exact course code pattern
         return /^\s*21[A-Z]{2,5}\d{3}[A-Z]?\s*$/i.test(q);
       }
 
-      /* ── Send flow ─────────────────────────────────────────────────────── */
+      function clearWelcome() {
+        const w = chat.querySelector('.welcome');
+        if (w) w.remove();
+      }
+
+      /* ── Send ──────────────────────────────────────────────── */
       async function handleSend() {
         const q = input.value.trim();
         if (!q) return;
@@ -505,239 +354,137 @@
       }
 
       async function sendQuery(q) {
-        input.value = "";
+        input.value = '';
         hideSuggestions();
+        clearWelcome();
         appendUserMsg(q);
         sendBtn.disabled = true;
 
-        // If it's a direct course code, use the fast search endpoint
         if (isDirectSearch(q)) {
           const tid = appendTyping();
           try {
-            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const r = await fetch('/api/search?q=' + encodeURIComponent(q));
             const data = await r.json();
-            removeTyping(tid);
-            if (r.ok) {
-              appendBotMsg(data.response || "_No response._");
-            } else {
-              appendBotMsg(
-                `**Error ${r.status}:** ${data.detail || "Unknown error"}`,
-                true,
-              );
-            }
-          } catch (e) {
-            removeTyping(tid);
-            appendBotMsg(
-              "**Cannot reach server.** Make sure the backend is running.",
-              true,
-            );
-          } finally {
-            sendBtn.disabled = false;
-            input.focus();
-          }
+            removeEl(tid);
+            appendBotMsg(r.ok ? (data.response || '_No results._') : '**Error:** ' + (data.detail || 'Unknown'), !r.ok);
+          } catch {
+            removeEl(tid);
+            appendBotMsg('**Cannot reach server.** Is the backend running?', true);
+          } finally { sendBtn.disabled = false; input.focus(); }
           return;
         }
 
-        // Otherwise, use the AI chat endpoint with streaming
-        const botMsgId = appendBotMsgEmpty();
-        let fullText = "";
-
+        const botId = appendBotMsgEmpty();
+        let full = '';
         try {
-          const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ question: q }),
           });
-
-          if (!response.ok) {
-            const err = await response.json();
-            updateBotMsg(
-              botMsgId,
-              `**Error ${response.status}:** ${err.detail || "Unknown error"}`,
-              true,
-            );
-            sendBtn.disabled = false;
-            input.focus();
+          if (!res.ok) {
+            const err = await res.json();
+            updateBotMsg(botId, '**Error:** ' + (err.detail || 'Unknown'), true);
+            sendBtn.disabled = false; input.focus();
             return;
           }
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = '';
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop(); // keep incomplete line in buffer
-
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
             for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
+              if (!line.startsWith('data: ')) continue;
               const payload = line.slice(6).trim();
-              if (payload === "[DONE]") continue;
-
+              if (payload === '[DONE]') continue;
               try {
-                const data = JSON.parse(payload);
-                if (data.error) {
-                  updateBotMsg(botMsgId, `**Error:** ${data.error}`, true);
-                  sendBtn.disabled = false;
-                  input.focus();
-                  return;
-                }
-                if (data.text) {
-                  fullText += data.text;
-                  updateBotMsg(botMsgId, fullText);
-                }
+                const d = JSON.parse(payload);
+                if (d.error) { updateBotMsg(botId, '**Error:** ' + d.error, true); sendBtn.disabled = false; input.focus(); return; }
+                if (d.text) { full += d.text; updateBotMsg(botId, full); }
               } catch {}
             }
           }
-
-          if (!fullText) {
-            updateBotMsg(
-              botMsgId,
-              "I couldn't generate a response. Please try rephrasing your question.",
-              true,
-            );
-          }
-        } catch (e) {
-          updateBotMsg(
-            botMsgId,
-            "**Cannot reach server.** Make sure the backend is running.",
-            true,
-          );
-        } finally {
-          sendBtn.disabled = false;
-          input.focus();
-        }
+          if (!full) updateBotMsg(botId, 'No response generated. Try rephrasing.', true);
+        } catch {
+          updateBotMsg(botId, '**Cannot reach server.** Is the backend running?', true);
+        } finally { sendBtn.disabled = false; input.focus(); }
       }
 
-      /* ── Message builders ──────────────────────────────────────────────── */
-      let msgId = 0;
+      /* ── Message helpers ────────────────────────────────────── */
+      let mid = 0;
 
       function appendUserMsg(text) {
-        const id = ++msgId;
-        chat.insertAdjacentHTML(
-          "beforeend",
-          `
-    <div class="msg user" id="msg-${id}">
-      <div class="avatar">You</div>
-      <div class="bubble">${escHtml(text)}</div>
-    </div>`,
-        );
-        scrollToBottom();
+        const id = ++mid;
+        chat.insertAdjacentHTML('beforeend',
+          `<div class="msg user" id="m${id}"><div class="bubble">${esc(text)}</div></div>`);
+        scroll();
         return id;
       }
 
-      function appendBotMsg(markdown, isError = false) {
-        const id = ++msgId;
-        const cls = isError ? "error-bubble" : "";
-        chat.insertAdjacentHTML(
-          "beforeend",
-          `
-    <div class="msg bot" id="msg-${id}">
-      <div class="avatar">SRM</div>
-      <div class="bubble ${cls}">${marked.parse(markdown)}</div>
-    </div>`,
-        );
-        scrollToBottom();
+      function appendBotMsg(md, err = false) {
+        const id = ++mid;
+        chat.insertAdjacentHTML('beforeend',
+          `<div class="msg bot" id="m${id}"><div class="bubble${err ? ' error-bubble' : ''}">${marked.parse(md)}</div></div>`);
+        scroll();
         return id;
       }
 
       function appendBotMsgEmpty() {
-        const id = ++msgId;
-        chat.insertAdjacentHTML(
-          "beforeend",
-          `
-    <div class="msg bot" id="msg-${id}">
-      <div class="avatar">SRM</div>
-      <div class="bubble"><span class="dot-flashing"></span></div>
-    </div>`,
-        );
-        scrollToBottom();
+        const id = ++mid;
+        chat.insertAdjacentHTML('beforeend',
+          `<div class="msg bot" id="m${id}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`);
+        scroll();
         return id;
       }
 
-      function updateBotMsg(id, markdown, isError = false) {
-        const el = document.getElementById(`msg-${id}`);
+      function updateBotMsg(id, md, err = false) {
+        const el = document.getElementById('m' + id);
         if (!el) return;
-        const bubble = el.querySelector(".bubble");
-        bubble.className = "bubble" + (isError ? " error-bubble" : "");
-        bubble.innerHTML = marked.parse(markdown);
-        scrollToBottom();
+        const b = el.querySelector('.bubble');
+        b.className = 'bubble' + (err ? ' error-bubble' : '');
+        b.innerHTML = marked.parse(md);
+        scroll();
       }
 
       function appendTyping() {
-        const id = ++msgId;
-        chat.insertAdjacentHTML(
-          "beforeend",
-          `
-    <div class="msg bot typing" id="msg-${id}">
-      <div class="avatar">SRM</div>
-      <div class="bubble"><div class="dot-flashing"></div></div>
-    </div>`,
-        );
-        scrollToBottom();
+        const id = ++mid;
+        chat.insertAdjacentHTML('beforeend',
+          `<div class="msg bot" id="m${id}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`);
+        scroll();
         return id;
       }
 
-      function removeTyping(id) {
-        document.getElementById(`msg-${id}`)?.remove();
-      }
+      function removeEl(id) { document.getElementById('m' + id)?.remove(); }
+      function scroll() { chat.scrollTop = chat.scrollHeight; }
+      function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-      function scrollToBottom() {
-        chat.scrollTop = chat.scrollHeight;
-      }
-
-      function escHtml(s) {
-        return s
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-      }
-
-      /* ── Keyboard handling ─────────────────────────────────────────────── */
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
+      /* ── Keyboard ───────────────────────────────────────────── */
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          if (sugIndex >= 0 && sugItems[sugIndex]) {
-            selectSuggestion(sugIndex);
-          } else {
-            handleSend();
-          }
+          sugIndex >= 0 && sugItems[sugIndex] ? selectSug(sugIndex) : handleSend();
           return;
         }
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          moveSug(1);
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          moveSug(-1);
-          return;
-        }
-        if (e.key === "Escape") {
-          hideSuggestions();
-          return;
-        }
+        if (e.key === 'ArrowDown') { e.preventDefault(); moveSug(1); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); moveSug(-1); }
+        if (e.key === 'Escape') hideSuggestions();
       });
 
-      input.addEventListener("input", () => {
+      input.addEventListener('input', () => {
         clearTimeout(sugTimer);
         sugTimer = setTimeout(fetchSuggestions, 200);
       });
 
-      /* ── Autocomplete ──────────────────────────────────────────────────── */
+      /* ── Autocomplete ───────────────────────────────────────── */
       async function fetchSuggestions() {
         const q = input.value.trim();
-        if (q.length < 2) {
-          hideSuggestions();
-          return;
-        }
+        if (q.length < 2) { hideSuggestions(); return; }
         try {
-          const r = await fetch(`/api/suggest?q=${encodeURIComponent(q)}`);
+          const r = await fetch('/api/suggest?q=' + encodeURIComponent(q));
           const d = await r.json();
           sugItems = d.suggestions || [];
           renderSuggestions();
@@ -745,50 +492,39 @@
       }
 
       function renderSuggestions() {
-        if (!sugItems.length) {
-          hideSuggestions();
-          return;
-        }
+        if (!sugItems.length) { hideSuggestions(); return; }
         sugIndex = -1;
-        sugBox.innerHTML = sugItems
-          .map(
-            (s, i) =>
-              `<div class="sug-item" data-i="${i}" onclick="selectSuggestion(${i})">
-       <span class="sug-code">${escHtml(s.code)}</span>
-       <span class="sug-name">${escHtml(s.name)}</span>
-     </div>`,
-          )
-          .join("");
-        sugBox.style.display = "block";
+        sugBox.innerHTML = sugItems.map((s, i) =>
+          `<div class="sug-item" onclick="selectSug(${i})">
+            <span class="sug-code">${esc(s.code)}</span>
+            <span class="sug-name">${esc(s.name)}</span>
+          </div>`
+        ).join('');
+        sugBox.style.display = 'block';
       }
 
-      function hideSuggestions() {
-        sugBox.style.display = "none";
-        sugIndex = -1;
-      }
+      function hideSuggestions() { sugBox.style.display = 'none'; sugIndex = -1; }
 
       function moveSug(dir) {
-        const items = sugBox.querySelectorAll(".sug-item");
+        const items = sugBox.querySelectorAll('.sug-item');
         if (!items.length) return;
-        items[sugIndex]?.classList.remove("active");
+        items[sugIndex]?.classList.remove('active');
         sugIndex = Math.max(-1, Math.min(items.length - 1, sugIndex + dir));
         if (sugIndex >= 0) {
-          items[sugIndex].classList.add("active");
-          items[sugIndex].scrollIntoView({ block: "nearest" });
+          items[sugIndex].classList.add('active');
+          items[sugIndex].scrollIntoView({ block: 'nearest' });
           input.value = sugItems[sugIndex].code;
         }
       }
 
-      function selectSuggestion(i) {
-        const s = sugItems[i];
-        if (!s) return;
+      function selectSug(i) {
+        if (!sugItems[i]) return;
         hideSuggestions();
-        sendQuery(s.code);
+        sendQuery(sugItems[i].code);
       }
 
-      /* ── Close dropdown when clicking outside ──────────────────────────── */
-      document.addEventListener("click", (e) => {
-        if (!e.target.closest("#inputwrap")) hideSuggestions();
+      document.addEventListener('click', e => {
+        if (!e.target.closest('#inputwrap')) hideSuggestions();
       });
     </script>
   </body>
