@@ -17,6 +17,7 @@ import os
 import re
 import sqlite3
 import io
+import logging
 from pathlib import Path
 
 import pypdf
@@ -94,18 +95,66 @@ def get_chroma():
 # ── DB helper ─────────────────────────────────────────────────────────────────
 _db_migrated = False
 
+RE_LTPC = re.compile(r'\bL\s+T\s+P\s+C\b')
+
 def _ensure_schema(conn: sqlite3.Connection):
-    """Add start_page/end_page columns if they don't exist yet."""
+    """Add start_page/end_page columns if missing, and auto-populate them."""
     global _db_migrated
     if _db_migrated:
         return
+
     cols = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
     if "start_page" not in cols:
         conn.execute("ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0")
     if "end_page" not in cols:
         conn.execute("ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0")
     conn.commit()
+
+    # Check if page numbers are populated
+    populated = conn.execute(
+        "SELECT COUNT(*) FROM courses WHERE start_page != 0 OR end_page != 0"
+    ).fetchone()[0]
+
+    if populated == 0 and PDF_DOC_PATH.exists():
+        _populate_page_numbers(conn)
+
     _db_migrated = True
+
+
+def _populate_page_numbers(conn: sqlite3.Connection):
+    """Scan the PDF to find course boundaries and write them to the DB."""
+    try:
+        import pdfplumber
+    except ImportError:
+        logging.warning("pdfplumber not installed — cannot auto-populate page numbers")
+        return
+
+    logging.info("Auto-populating page numbers from PDF...")
+    pages = []
+    with pdfplumber.open(str(PDF_DOC_PATH)) as pdf:
+        for page in pdf.pages:
+            pages.append(page.extract_text() or "")
+
+    starts = []
+    for i, text in enumerate(pages):
+        if not RE_LTPC.search(text):
+            continue
+        codes = RE_CODE.findall(text)
+        if codes:
+            starts.append((i, codes[0].upper()))
+
+    updated = 0
+    for idx, (si, code) in enumerate(starts):
+        ei = starts[idx + 1][0] if idx + 1 < len(starts) else min(si + 5, len(pages))
+        result = conn.execute(
+            "UPDATE courses SET start_page=?, end_page=? WHERE UPPER(code)=?",
+            (si, ei, code),
+        )
+        if result.rowcount > 0:
+            updated += 1
+
+    conn.commit()
+    logging.info(f"Populated page numbers for {updated} courses")
 
 
 def get_conn() -> sqlite3.Connection:

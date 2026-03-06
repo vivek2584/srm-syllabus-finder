@@ -1,5 +1,29 @@
+# Source PDF (too large for git — hosted via GitHub Release)
 computing-programmes-syllabus-2021.pdf
-.venv/
+
+# Python
 __pycache__/
-data/chroma/
 *.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Data (generated at build/runtime)
+data/chroma/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*

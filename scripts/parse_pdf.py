@@ -153,9 +153,16 @@ _CATEGORY_SUFFIXES = [
 
 def parse_name(text: str, code: str) -> str:
     """
-    The course name appears on the same line as the code, between the code
-    and the category letter / 'PROFESSIONAL' keyword.
+    The course name appears in a two-row table header in the PDF:
+
+      Row 1:  Course  Course  <NAME PART 1>              Course  L T P C
+      Row 3:  Code    Name    <NAME PART 2 (overflow)>   Category  ...
+
+    pdfplumber flattens these into consecutive lines.  We first try to grab the
+    name from the code's line (row 1), then check the "Code Name" line (row 3)
+    for any overflow continuation.
     """
+    # ── Part 1: extract name from the line containing the course code ──
     # Try: '<CODE>   SOME NAME   C   PROFESSIONAL CORE'
     # Allow lowercase to capture 'IoT' etc.
     m = re.search(
@@ -197,6 +204,25 @@ def parse_name(text: str, code: str) -> str:
             candidate = re.sub(r'\s{2,}', ' ', candidate).strip()
             if len(candidate) > 5:
                 name = candidate
+
+    # ── Part 2: check for multi-line name continuation ──
+    # The "Code Name <OVERFLOW> Category" line may contain the rest of the name.
+    # When the name fits on one line, this row is just "Code Name Category 3 0 2 4"
+    # so we must not capture "Category" itself as a continuation.
+    cont_m = re.search(
+        r'Code\s+Name\s+(?!Category\b)([A-Za-z][A-Za-z0-9 ,()&/:;\-]+?)\s+Category\b',
+        text[:600]
+    )
+    if not cont_m:
+        cont_m = re.search(
+            r'Code\s+Name\s+(?!Category\b)([A-Za-z][A-Za-z0-9 ,()&/:;\-]+?)(?:\s{2,}|\s*\n)',
+            text[:600]
+        )
+    if cont_m:
+        continuation = cont_m.group(1).strip()
+        if (continuation and len(continuation) > 1
+                and continuation.upper() not in ("CODE", "NAME", "CATEGORY", "NIL")):
+            name = name + " " + continuation
 
     return name
 
