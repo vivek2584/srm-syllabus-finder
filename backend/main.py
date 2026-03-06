@@ -332,15 +332,140 @@ def stats():
 # ── AI Chat endpoint (RAG) ────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are the SRM Syllabus Assistant, an AI helper for students at SRM Institute of Science and Technology (School of Computing, Regulations 2021).
 
+FIRST STEP — before generating any answer:
+Check whether the provided context contains information relevant to the student's question. If it does not, refuse immediately — do NOT attempt to answer from your own knowledge.
+
 Your job:
 - Answer questions about courses, syllabi, prerequisites, credits, units, textbooks, and course outcomes using ONLY the provided syllabus context.
 - Be helpful, clear, and concise. Use markdown formatting for readability.
-- If the context doesn't contain enough information to answer, say so honestly — don't make things up.
-- When referencing courses, always mention the course code and name.
-- You can compare courses, suggest prerequisites, explain what a unit covers, list textbooks, etc.
+- Always bold course codes (e.g., **21CSC201J**) and mention the course name alongside.
 - Keep responses focused and student-friendly.
 
-IMPORTANT: Only use information from the provided context. Do not invent course details."""
+Context format: Each course chunk is one of these types:
+- **Overview**: course code, name, category, credits (L-T-P-C), department, prerequisites, co-requisites, CLRs, COs.
+- **Unit**: unit number, title, hours, and detailed topic list.
+- **Resources**: textbooks and reference materials.
+
+Formatting templates:
+- Single course detail → Use a heading (## Code — Name), then bulleted/numbered sections for units, COs, resources, etc.
+- Multiple courses or comparison → Use a markdown table (| Feature | Course A | Course B |).
+- Lists (units, textbooks, COs) → Always use numbered or bulleted lists, never inline paragraphs.
+
+Response guidelines:
+- When asked about prerequisites, also mention the credit structure.
+- For "what does unit X cover" questions, list the topics clearly.
+- If you see data for multiple courses, address all of them — don't ignore any.
+- ALWAYS include ALL units present in the context — never skip or summarize units. If the context has 5 units, list all 5.
+- If your response is getting long, prioritize units and topic details over CLRs and COs. Never cut off mid-section — finish the current section or omit it entirely.
+
+STRICT RULES — violating these is unacceptable:
+- ONLY use information explicitly present in the provided context. Do not use your training knowledge to fill gaps.
+- If the context does not contain the answer, respond ONLY with: "I don't have that information in the syllabus database. Try asking about a specific course code or topic."
+- NEVER invent, guess, or assume course codes, course names, unit contents, textbooks, credit values, or any other details.
+- If the question is unrelated to SRM syllabi/courses, say: "I can only help with questions about SRM course syllabi."
+- Do NOT answer general knowledge questions even if the topic appears in a course (e.g., if asked "explain binary trees", only answer with what the syllabus says, not a general CS explanation)."""
+
+
+# ── Chat helpers ──────────────────────────────────────────────────────────────
+STOP_WORDS = {"WHAT", "WHICH", "WHERE", "WHEN", "HOW", "WHO", "ARE", "THE",
+              "FOR", "AND", "WITH", "ABOUT", "DOES", "THIS", "THAT", "FROM",
+              "HAVE", "HAS", "CAN", "WILL", "TELL", "ME", "IN", "OF", "TO",
+              "IS", "IT", "DO", "A", "AN", "ON", "AT", "BY", "OR", "BE",
+              "ALL", "ANY", "NOT", "NO", "SO", "IF", "BUT", "MY", "ITS",
+              "COURSE", "COURSES", "SYLLABUS", "SUBJECT", "UNITS", "UNIT",
+              "PREREQUISITES", "PREREQUISITE", "TEXTBOOKS", "TEXTBOOK",
+              "EXPLAIN", "DESCRIBE", "LIST", "COMPARE", "COVER", "COVERS",
+              "TOPICS", "TOPIC", "DETAILS", "DETAIL", "BETWEEN", "VS",
+              "DIFFERENCE", "DIFFERENCES", "VERSUS", "WHAT'S", "WHATS",
+              "FULL", "COMPLETE", "ENTIRE", "WHOLE", "BRIEF", "SHORT",
+              "SUMMARY", "OVERVIEW", "DETAILED", "INFO", "INFORMATION",
+              "GIVE", "SHOW", "PLEASE", "NEED", "WANT", "KNOW", "GET",
+              "SRM", "SRMIST", "UNIVERSITY"}
+
+RE_CREDIT = re.compile(r'(\d+)\s*(?:credit|credits)\b', re.IGNORECASE)
+RE_CATEGORY = re.compile(
+    r'\b(core|elective|professional|open|mandatory|audit|lab)\b', re.IGNORECASE
+)
+
+
+def resolve_courses(question: str, conn) -> list[str]:
+    """Resolve a question to course codes using SQL name search."""
+    q_up = question.upper()
+
+    # Filter stop words
+    words = [w for w in q_up.split() if w not in STOP_WORDS and len(w) > 1]
+    if not words:
+        return []
+
+    clause = " AND ".join(["UPPER(name) LIKE ?"] * len(words))
+    params = [f"%{w}%" for w in words]
+    rows = conn.execute(
+        f"SELECT code FROM courses WHERE {clause} LIMIT 3", params
+    ).fetchall()
+    return [r["code"] for r in rows]
+
+
+def detect_aggregate_query(question: str) -> dict | None:
+    """Detect if the question is an aggregate/listing query that should use SQL."""
+    q_up = question.upper()
+
+    # Credit-based queries: "which courses have 4 credits"
+    credit_match = RE_CREDIT.search(question)
+    cat_match = RE_CATEGORY.search(question)
+
+    if credit_match and any(kw in q_up for kw in ("WHICH", "LIST", "WHAT", "ALL", "SHOW")):
+        return {"type": "credits", "value": int(credit_match.group(1))}
+
+    if cat_match and any(kw in q_up for kw in ("WHICH", "LIST", "WHAT", "ALL", "SHOW")):
+        return {"type": "category", "value": cat_match.group(1).upper()}
+
+    if any(phrase in q_up for phrase in ("HOW MANY COURSES", "TOTAL COURSES", "COUNT OF COURSES")):
+        return {"type": "count"}
+
+    return None
+
+
+def handle_aggregate_query(query_info: dict, conn) -> str:
+    """Handle aggregate queries with direct SQL and return a markdown response."""
+    qtype = query_info["type"]
+
+    if qtype == "credits":
+        credits = query_info["value"]
+        rows = conn.execute(
+            "SELECT code, name, category FROM courses WHERE c = ? ORDER BY code",
+            (credits,)
+        ).fetchall()
+        if not rows:
+            return f"No courses found with **{credits} credits**."
+        lines = [f"## Courses with {credits} Credits ({len(rows)} found)\n"]
+        for r in rows:
+            lines.append(f"- **{r['code']}** — {r['name']} ({r['category']})")
+        return "\n".join(lines)
+
+    if qtype == "category":
+        cat = query_info["value"]
+        rows = conn.execute(
+            "SELECT code, name, c FROM courses WHERE UPPER(category) LIKE ? ORDER BY code",
+            (f"%{cat}%",)
+        ).fetchall()
+        if not rows:
+            return f"No **{cat.lower()}** courses found."
+        lines = [f"## {cat.title()} Courses ({len(rows)} found)\n"]
+        for r in rows:
+            lines.append(f"- **{r['code']}** — {r['name']} ({r['c']} credits)")
+        return "\n".join(lines)
+
+    if qtype == "count":
+        total = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+        cats = conn.execute(
+            "SELECT category, COUNT(*) AS n FROM courses GROUP BY category ORDER BY n DESC"
+        ).fetchall()
+        lines = [f"## Course Statistics\n", f"**Total courses:** {total}\n"]
+        for c in cats:
+            lines.append(f"- {c['category']}: {c['n']}")
+        return "\n".join(lines)
+
+    return ""
 
 
 @app.post("/api/chat")
@@ -350,16 +475,40 @@ async def chat_endpoint(request: Request):
     if not question:
         raise HTTPException(400, "No question provided")
 
+    # 0) Check if this is an aggregate query (credit/category/count listing)
+    agg = detect_aggregate_query(question)
+    if agg:
+        conn = get_conn()
+        try:
+            response = handle_aggregate_query(agg, conn)
+        finally:
+            conn.close()
+        if response:
+            agg_title = response.split('\n')[0].replace('## ', '').strip()
+            async def send_aggregate():
+                yield f"data: {json.dumps({'meta': {'title': agg_title}})}\n\n"
+                yield f"data: {json.dumps({'text': response})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(send_aggregate(), media_type="text/event-stream")
+
     # 1) Retrieve relevant chunks from ChromaDB
     collection = get_chroma()
 
-    # If question mentions course codes, use metadata filtering to guarantee
-    # we fetch chunks for those specific courses (semantic search alone fails
-    # on alphanumeric codes like "21CSC201J").
+    # If question mentions course codes, use metadata filtering
     mentioned_codes = [m.group(1).upper() for m in RE_CODE.finditer(question)]
+
+    # If no course codes found, try to resolve via course name search
+    if not mentioned_codes:
+        conn = get_conn()
+        try:
+            mentioned_codes = resolve_courses(question, conn)
+        finally:
+            conn.close()
 
     if mentioned_codes:
         # Fetch chunks for each mentioned course via metadata filter
+        # Each course has ~7 chunks (overview + 5 units + resources), scale accordingly
+        n = max(12, len(mentioned_codes) * 8)
         if len(mentioned_codes) == 1:
             where_filter = {"code": mentioned_codes[0]}
         else:
@@ -367,7 +516,7 @@ async def chat_endpoint(request: Request):
 
         results = collection.query(
             query_texts=[question],
-            n_results=12,
+            n_results=n,
             where=where_filter,
         )
     else:
@@ -382,6 +531,20 @@ async def chat_endpoint(request: Request):
     if not context_chunks:
         return {"response": "I couldn't find any relevant syllabus information for your question. Try asking about a specific course code or topic."}
 
+    # Look up course names for metadata
+    course_names = []
+    if mentioned_codes:
+        conn = get_conn()
+        try:
+            for code in mentioned_codes:
+                row = conn.execute(
+                    "SELECT name FROM courses WHERE UPPER(code) = ?", (code,)
+                ).fetchone()
+                if row:
+                    course_names.append({"code": code, "name": row["name"]})
+        finally:
+            conn.close()
+
     # 2) Build prompt with context
     context_text = "\n\n---\n\n".join(context_chunks)
     user_prompt = f"""Based on the following syllabus information, answer the student's question.
@@ -390,11 +553,17 @@ async def chat_endpoint(request: Request):
 {context_text}
 === END CONTEXT ===
 
-Student's question: {question}"""
+Student's question: {question}
+
+Remember: ONLY use information from the context above. If the answer is not in the context, say you don't have that information."""
 
     # 3) Call Groq (Llama 3.3 70B)
     async def generate_stream():
         try:
+            # Send metadata first so frontend knows course context
+            if course_names:
+                yield f"data: {json.dumps({'meta': {'courses': course_names}})}\n\n"
+
             client = get_groq_client()
             stream = client.chat.completions.create(
                 model=GROQ_MODEL,
@@ -403,6 +572,8 @@ Student's question: {question}"""
                     {"role": "user", "content": user_prompt},
                 ],
                 stream=True,
+                temperature=0.2,
+                max_tokens=1500,
             )
             for chunk in stream:
                 text = chunk.choices[0].delta.content
