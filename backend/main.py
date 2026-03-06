@@ -92,6 +92,22 @@ def get_chroma():
 
 
 # ── DB helper ─────────────────────────────────────────────────────────────────
+_db_migrated = False
+
+def _ensure_schema(conn: sqlite3.Connection):
+    """Add start_page/end_page columns if they don't exist yet."""
+    global _db_migrated
+    if _db_migrated:
+        return
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
+    if "start_page" not in cols:
+        conn.execute("ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0")
+    if "end_page" not in cols:
+        conn.execute("ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0")
+    conn.commit()
+    _db_migrated = True
+
+
 def get_conn() -> sqlite3.Connection:
     if not DB_PATH.exists():
         raise HTTPException(
@@ -100,6 +116,7 @@ def get_conn() -> sqlite3.Connection:
         )
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    _ensure_schema(conn)
     return conn
 
 

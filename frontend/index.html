@@ -457,31 +457,55 @@
 
         const isSyllabus = isDirectSearch(q);
 
-        if (isSyllabus) {
+        // Try /api/search first for both code lookups and name searches
+        {
           const tid = appendTyping();
           try {
             const r = await fetch("/api/search?q=" + encodeURIComponent(q));
-            const data = await r.json();
+            const data = r.ok ? await r.json() : null;
+
+            if (data && data.type === "course") {
+              // Single course match — show with PDF button
+              removeEl(tid);
+              appendBotMsg(data.response, false, true, true);
+              sendBtn.disabled = false;
+              input.focus();
+              return;
+            }
+            if (data && data.type === "list") {
+              // Multiple matches — show the list, no PDF button
+              removeEl(tid);
+              appendBotMsg(data.response, false, true, false);
+              sendBtn.disabled = false;
+              input.focus();
+              return;
+            }
+            // not_found or error — for direct code searches, show the result;
+            // for name queries, fall through to AI chat
             removeEl(tid);
-            appendBotMsg(
-              r.ok
-                ? data.response || "_No results._"
-                : "**Error:** " + (data.detail || "Unknown"),
-              !r.ok,
-              true,
-              isSyllabus,
-            );
+            if (isSyllabus) {
+              appendBotMsg(
+                data ? data.response || "_No results._" : "**Error:** Unknown",
+                !r.ok,
+                true,
+                false,
+              );
+              sendBtn.disabled = false;
+              input.focus();
+              return;
+            }
           } catch {
             removeEl(tid);
-            appendBotMsg(
-              "**Cannot reach server.** Is the backend running?",
-              true,
-            );
-          } finally {
-            sendBtn.disabled = false;
-            input.focus();
+            if (isSyllabus) {
+              appendBotMsg(
+                "**Cannot reach server.** Is the backend running?",
+                true,
+              );
+              sendBtn.disabled = false;
+              input.focus();
+              return;
+            }
           }
-          return;
         }
 
         const botId = appendBotMsgEmpty();
