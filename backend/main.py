@@ -33,6 +33,17 @@ CHROMA_DIR   = ROOT / "data" / "chroma"
 FRONTEND_DIR = ROOT / "frontend"
 PDF_DOC_PATH = ROOT / "computing-programmes-syllabus-2021.pdf"
 
+# ── Cached PDF reader (avoid re-reading 183 MB on every request) ─────────────
+_pdf_reader: pypdf.PdfReader | None = None
+
+def get_pdf_reader() -> pypdf.PdfReader:
+    global _pdf_reader
+    if _pdf_reader is None:
+        if not PDF_DOC_PATH.exists():
+            raise HTTPException(503, "Original PDF document not found on the server.")
+        _pdf_reader = pypdf.PdfReader(str(PDF_DOC_PATH))
+    return _pdf_reader
+
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="SRM Syllabus Finder", version="2.0.0")
 
@@ -255,36 +266,38 @@ def get_pdf(code: str):
         row = conn.execute(
             "SELECT start_page, end_page FROM courses WHERE UPPER(code) = ?", (code.upper(),)
         ).fetchone()
-        
+
         if not row:
             raise HTTPException(404, f"Course {code} not found")
-        
+
         start_page = row["start_page"]
         end_page = row["end_page"]
-        
-        if not PDF_DOC_PATH.exists():
-            raise HTTPException(503, "Original PDF document not found on the server.")
-            
-        # Extract the specific pages using pypdf
-        reader = pypdf.PdfReader(str(PDF_DOC_PATH))
+
+        if start_page == 0 and end_page == 0:
+            raise HTTPException(
+                404,
+                f"Page data not available for {code}. Run: python scripts/update_page_numbers.py",
+            )
+
+        reader = get_pdf_reader()
         writer = pypdf.PdfWriter()
-        
+
         # Valid bounds check for robustness
         start_page = max(0, start_page)
         end_page = min(len(reader.pages), end_page) if end_page > start_page else start_page + 1
 
         for i in range(start_page, end_page):
             writer.add_page(reader.pages[i])
-            
+
         output_stream = io.BytesIO()
         writer.write(output_stream)
         output_stream.seek(0)
-        
+
         filename = f"{code.upper()}_Syllabus.pdf"
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
-        
+
         return Response(content=output_stream.read(), media_type="application/pdf", headers=headers)
     finally:
         conn.close()

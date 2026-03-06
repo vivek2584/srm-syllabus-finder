@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SRM Syllabus Finder</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
       :root {
         --bg: #fafafa;
@@ -24,7 +29,7 @@
         --accent: #3b82f6;
         --error-bg: #fef2f2;
         --error-border: #ef4444;
-        --font: 'Inter', system-ui, -apple-system, sans-serif;
+        --font: "Inter", system-ui, -apple-system, sans-serif;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -86,7 +91,9 @@
         flex-direction: column;
         gap: 16px;
       }
-      #chat::-webkit-scrollbar { width: 0; }
+      #chat::-webkit-scrollbar {
+        width: 0;
+      }
 
       /* ── Messages ────────────────────────────────────────────── */
       .msg {
@@ -96,10 +103,17 @@
         animation: fadeUp 0.15s ease-out;
       }
       @keyframes fadeUp {
-        from { opacity: 0; transform: translateY(4px); }
-        to { opacity: 1; }
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+        }
       }
-      .msg.user { justify-content: flex-end; }
+      .msg.user {
+        justify-content: flex-end;
+      }
 
       .bubble {
         padding: 10px 16px;
@@ -136,17 +150,28 @@
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      .bubble .content p { margin: 4px 0; }
-      .bubble .content ul, .bubble .content ol { padding-left: 18px; margin: 4px 0; }
-      .bubble .content li { margin: 2px 0; font-size: 0.88rem; }
-      .bubble .content strong { font-weight: 600; }
+      .bubble .content p {
+        margin: 4px 0;
+      }
+      .bubble .content ul,
+      .bubble .content ol {
+        padding-left: 18px;
+        margin: 4px 0;
+      }
+      .bubble .content li {
+        margin: 2px 0;
+        font-size: 0.88rem;
+      }
+      .bubble .content strong {
+        font-weight: 600;
+      }
       .bubble .content code {
         background: var(--bg);
         border: 1px solid var(--border);
         border-radius: 4px;
         padding: 1px 5px;
         font-size: 0.82em;
-        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-family: "SF Mono", "Fira Code", monospace;
       }
 
       /* PDF Download Button */
@@ -206,8 +231,12 @@
         color: var(--text);
         transition: border-color 0.15s;
       }
-      #q::placeholder { color: var(--text-secondary); }
-      #q:focus { border-color: var(--accent); }
+      #q::placeholder {
+        color: var(--text-secondary);
+      }
+      #q:focus {
+        border-color: var(--accent);
+      }
 
       #sendbtn {
         padding: 10px 18px;
@@ -222,8 +251,13 @@
         transition: background 0.15s;
         flex-shrink: 0;
       }
-      #sendbtn:hover { background: var(--primary-hover); }
-      #sendbtn:disabled { opacity: 0.4; cursor: default; }
+      #sendbtn:hover {
+        background: var(--primary-hover);
+      }
+      #sendbtn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
 
       /* ── Suggestions dropdown ─────────────────────────────────── */
       #suggestions {
@@ -234,7 +268,7 @@
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         max-height: 200px;
         overflow-y: auto;
         z-index: 100;
@@ -249,12 +283,19 @@
         font-size: 0.85rem;
         transition: background 0.1s;
       }
-      .sug-item:first-child { border-radius: 10px 10px 0 0; }
-      .sug-item:last-child { border-radius: 0 0 10px 10px; }
-      .sug-item:hover, .sug-item.active { background: var(--bot-bg); }
+      .sug-item:first-child {
+        border-radius: 10px 10px 0 0;
+      }
+      .sug-item:last-child {
+        border-radius: 0 0 10px 10px;
+      }
+      .sug-item:hover,
+      .sug-item.active {
+        background: var(--bot-bg);
+      }
       .sug-code {
         font-weight: 600;
-        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-family: "SF Mono", "Fira Code", monospace;
         font-size: 0.8rem;
         color: var(--accent);
         flex-shrink: 0;
@@ -279,11 +320,21 @@
         background: var(--text-secondary);
         animation: blink 1.4s infinite both;
       }
-      .dot-flashing span:nth-child(2) { animation-delay: 0.2s; }
-      .dot-flashing span:nth-child(3) { animation-delay: 0.4s; }
+      .dot-flashing span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .dot-flashing span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
       @keyframes blink {
-        0%, 80%, 100% { opacity: 0.2; }
-        40% { opacity: 1; }
+        0%,
+        80%,
+        100% {
+          opacity: 0.2;
+        }
+        40% {
+          opacity: 1;
+        }
       }
 
       /* ── Welcome state ───────────────────────────────────────── */
@@ -311,9 +362,16 @@
 
       /* ── Responsive ──────────────────────────────────────────── */
       @media (max-width: 480px) {
-        header { padding: 12px 16px; }
-        #chat { padding: 16px 10px; }
-        .bubble { max-width: 92%; padding: 8px 12px; }
+        header {
+          padding: 12px 16px;
+        }
+        #chat {
+          padding: 16px 10px;
+        }
+        .bubble {
+          max-width: 92%;
+          padding: 8px 12px;
+        }
       }
     </style>
   </head>
@@ -328,7 +386,13 @@
     <div id="inputbar">
       <div id="inputwrap">
         <div id="suggestions"></div>
-        <input id="q" type="text" placeholder="Ask about any course or topic..." autocomplete="off" spellcheck="false" />
+        <input
+          id="q"
+          type="text"
+          placeholder="Ask about any course or topic..."
+          autocomplete="off"
+          spellcheck="false"
+        />
         <button id="sendbtn" onclick="handleSend()">Send</button>
       </div>
     </div>
@@ -336,16 +400,18 @@
     <script>
       marked.setOptions({ breaks: true, gfm: true });
 
-      const chat = document.getElementById('chat');
-      const input = document.getElementById('q');
-      const sendBtn = document.getElementById('sendbtn');
-      const sugBox = document.getElementById('suggestions');
+      const chat = document.getElementById("chat");
+      const input = document.getElementById("q");
+      const sendBtn = document.getElementById("sendbtn");
+      const sugBox = document.getElementById("suggestions");
 
-      let sugIndex = -1, sugItems = [], sugTimer = null;
-      let lastQueryContext = 'Syllabus';
+      let sugIndex = -1,
+        sugItems = [],
+        sugTimer = null;
+      let lastQueryContext = "Syllabus";
 
       /* ── Init ─────────────────────────────────────────────── */
-      window.addEventListener('DOMContentLoaded', () => {
+      window.addEventListener("DOMContentLoaded", () => {
         chat.innerHTML = `
           <div class="welcome">
             <h2>Ask anything about your syllabus</h2>
@@ -357,10 +423,11 @@
 
       async function loadStats() {
         try {
-          const r = await fetch('/api/stats');
+          const r = await fetch("/api/stats");
           if (!r.ok) return;
           const d = await r.json();
-          document.getElementById('stats-badge').textContent = d.total_courses + ' courses';
+          document.getElementById("stats-badge").textContent =
+            d.total_courses + " courses";
         } catch {}
       }
 
@@ -369,7 +436,7 @@
       }
 
       function clearWelcome() {
-        const w = chat.querySelector('.welcome');
+        const w = chat.querySelector(".welcome");
         if (w) w.remove();
       }
 
@@ -382,7 +449,7 @@
 
       async function sendQuery(q) {
         lastQueryContext = q;
-        input.value = '';
+        input.value = "";
         hideSuggestions();
         clearWelcome();
         appendUserMsg(q);
@@ -393,59 +460,94 @@
         if (isSyllabus) {
           const tid = appendTyping();
           try {
-            const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+            const r = await fetch("/api/search?q=" + encodeURIComponent(q));
             const data = await r.json();
             removeEl(tid);
-            appendBotMsg(r.ok ? (data.response || '_No results._') : '**Error:** ' + (data.detail || 'Unknown'), !r.ok, true, isSyllabus);
+            appendBotMsg(
+              r.ok
+                ? data.response || "_No results._"
+                : "**Error:** " + (data.detail || "Unknown"),
+              !r.ok,
+              true,
+              isSyllabus,
+            );
           } catch {
             removeEl(tid);
-            appendBotMsg('**Cannot reach server.** Is the backend running?', true);
-          } finally { sendBtn.disabled = false; input.focus(); }
+            appendBotMsg(
+              "**Cannot reach server.** Is the backend running?",
+              true,
+            );
+          } finally {
+            sendBtn.disabled = false;
+            input.focus();
+          }
           return;
         }
 
         const botId = appendBotMsgEmpty();
-        let full = '';
+        let full = "";
         try {
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+          const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q }),
           });
           if (!res.ok) {
             const err = await res.json();
-            updateBotMsg(botId, '**Error:** ' + (err.detail || 'Unknown'), true);
-            sendBtn.disabled = false; input.focus();
+            updateBotMsg(
+              botId,
+              "**Error:** " + (err.detail || "Unknown"),
+              true,
+            );
+            sendBtn.disabled = false;
+            input.focus();
             return;
           }
           const reader = res.body.getReader();
           const dec = new TextDecoder();
-          let buf = '';
+          let buf = "";
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
-              const textIndicatesSyllabus = full.includes('L-T-P-C') || full.includes('Course Outcomes');
+              const textIndicatesSyllabus =
+                full.includes("L-T-P-C") || full.includes("Course Outcomes");
               updateBotMsg(botId, full, false, true, textIndicatesSyllabus);
               break;
             }
             buf += dec.decode(value, { stream: true });
-            const lines = buf.split('\n');
+            const lines = buf.split("\n");
             buf = lines.pop();
             for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
+              if (!line.startsWith("data: ")) continue;
               const payload = line.slice(6).trim();
-              if (payload === '[DONE]') continue;
+              if (payload === "[DONE]") continue;
               try {
                 const d = JSON.parse(payload);
-                if (d.error) { updateBotMsg(botId, '**Error:** ' + d.error, true); sendBtn.disabled = false; input.focus(); return; }
-                if (d.text) { full += d.text; updateBotMsg(botId, full); }
+                if (d.error) {
+                  updateBotMsg(botId, "**Error:** " + d.error, true);
+                  sendBtn.disabled = false;
+                  input.focus();
+                  return;
+                }
+                if (d.text) {
+                  full += d.text;
+                  updateBotMsg(botId, full);
+                }
               } catch {}
             }
           }
-          if (!full) updateBotMsg(botId, 'No response generated. Try rephrasing.', true);
+          if (!full)
+            updateBotMsg(botId, "No response generated. Try rephrasing.", true);
         } catch {
-          updateBotMsg(botId, '**Cannot reach server.** Is the backend running?', true);
-        } finally { sendBtn.disabled = false; input.focus(); }
+          updateBotMsg(
+            botId,
+            "**Cannot reach server.** Is the backend running?",
+            true,
+          );
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
       }
 
       /* ── Message helpers ────────────────────────────────────── */
@@ -453,8 +555,10 @@
 
       function appendUserMsg(text) {
         const id = ++mid;
-        chat.insertAdjacentHTML('beforeend',
-          `<div class="msg user" id="m${id}"><div class="bubble">${esc(text)}</div></div>`);
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `<div class="msg user" id="m${id}"><div class="bubble">${esc(text)}</div></div>`,
+        );
         scroll();
         return id;
       }
@@ -463,30 +567,40 @@
         const id = ++mid;
         let html = `<div class="content">${marked.parse(md)}</div>`;
         if (done && !err && showPdf) {
-            html += getPdfButtonHtml(id);
+          html += getPdfButtonHtml(id);
         }
-        chat.insertAdjacentHTML('beforeend',
-          `<div class="msg bot" id="m${id}"><div class="bubble${err ? ' error-bubble' : ''}">${html}</div></div>`);
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `<div class="msg bot" id="m${id}" data-query="${esc(lastQueryContext)}"><div class="bubble${err ? " error-bubble" : ""}">${html}</div></div>`,
+        );
         scroll();
         return id;
       }
 
       function appendBotMsgEmpty() {
         const id = ++mid;
-        chat.insertAdjacentHTML('beforeend',
-          `<div class="msg bot" id="m${id}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`);
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `<div class="msg bot" id="m${id}" data-query="${esc(lastQueryContext)}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`,
+        );
         scroll();
         return id;
       }
 
-      function updateBotMsg(id, md, err = false, done = false, showPdf = false) {
-        const el = document.getElementById('m' + id);
+      function updateBotMsg(
+        id,
+        md,
+        err = false,
+        done = false,
+        showPdf = false,
+      ) {
+        const el = document.getElementById("m" + id);
         if (!el) return;
-        const b = el.querySelector('.bubble');
-        b.className = 'bubble' + (err ? ' error-bubble' : '');
+        const b = el.querySelector(".bubble");
+        b.className = "bubble" + (err ? " error-bubble" : "");
         let html = `<div class="content">${marked.parse(md)}</div>`;
         if (done && !err && showPdf) {
-            html += getPdfButtonHtml(id);
+          html += getPdfButtonHtml(id);
         }
         b.innerHTML = html;
         scroll();
@@ -508,80 +622,108 @@
       async function downloadPDF(id) {
         const el = document.getElementById(id);
         if (!el) return;
-        
-        const btn = el.querySelector('.pdf-btn');
-        if (btn) btn.innerHTML = '<span class="dot-flashing" style="margin-right:8px;padding:0"><span></span><span></span><span></span></span> Generating...';
+
+        const btn = el.querySelector(".pdf-btn");
+        if (btn)
+          btn.innerHTML =
+            '<span class="dot-flashing" style="margin-right:8px;padding:0"><span></span><span></span><span></span></span> Generating...';
 
         try {
-            // Find the course code from the context or the response content
-            let codeToFetch = '';
-            if (isDirectSearch(lastQueryContext)) {
-                 codeToFetch = lastQueryContext.trim();
-            } else {
-                 const codeMatch = el.querySelector('.content').textContent.match(/\b21[A-Z]{2,5}\d{3}[A-Z]?\b/i);
-                 if (codeMatch) codeToFetch = codeMatch[0];
-            }
+          // Use the query stored on this specific message, not the global
+          const msgQuery = el.getAttribute("data-query") || "";
+          let codeToFetch = "";
+          if (isDirectSearch(msgQuery)) {
+            codeToFetch = msgQuery.trim();
+          } else {
+            const codeMatch = el
+              .querySelector(".content")
+              .textContent.match(/\b21[A-Z]{2,5}\d{3}[A-Z]?\b/i);
+            if (codeMatch) codeToFetch = codeMatch[0];
+          }
 
-            if (!codeToFetch) {
-                alert("Could not identify a clear course code to download its PDF.");
-                return;
-            }
+          if (!codeToFetch) {
+            alert(
+              "Could not identify a clear course code to download its PDF.",
+            );
+            return;
+          }
 
-            // Fetch the PDF as a blob so we control the filename
-            const response = await fetch(`/api/pdf/${encodeURIComponent(codeToFetch)}`);
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                alert('Download failed: ' + (err.detail || response.statusText));
-                return;
-            }
+          // Fetch the PDF as a blob so we control the filename
+          const response = await fetch(
+            `/api/pdf/${encodeURIComponent(codeToFetch)}`,
+          );
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            alert("Download failed: " + (err.detail || response.statusText));
+            return;
+          }
 
-            const blob = await response.blob();
-            const objectUrl = URL.createObjectURL(blob);
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
 
-            const a = document.createElement('a');
-            a.href = objectUrl;
-            a.download = `${codeToFetch.toUpperCase()}_Syllabus.pdf`;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(objectUrl);
-            }, 1000);
-
+          const a = document.createElement("a");
+          a.href = objectUrl;
+          a.download = `${codeToFetch.toUpperCase()}_Syllabus.pdf`;
+          a.style.display = "none";
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(objectUrl);
+          }, 1000);
         } catch (err) {
-          console.error('PDF Download Failed', err);
-          alert('Failed to download PDF.');
+          console.error("PDF Download Failed", err);
+          alert("Failed to download PDF.");
         } finally {
-          if (btn) btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF`;
+          if (btn)
+            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF`;
         }
       }
 
       function appendTyping() {
         const id = ++mid;
-        chat.insertAdjacentHTML('beforeend',
-          `<div class="msg bot" id="m${id}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`);
+        chat.insertAdjacentHTML(
+          "beforeend",
+          `<div class="msg bot" id="m${id}"><div class="bubble"><div class="dot-flashing"><span></span><span></span><span></span></div></div></div>`,
+        );
         scroll();
         return id;
       }
 
-      function removeEl(id) { document.getElementById('m' + id)?.remove(); }
-      function scroll() { chat.scrollTop = chat.scrollHeight; }
-      function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function removeEl(id) {
+        document.getElementById("m" + id)?.remove();
+      }
+      function scroll() {
+        chat.scrollTop = chat.scrollHeight;
+      }
+      function esc(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
 
       /* ── Keyboard ───────────────────────────────────────────── */
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          sugIndex >= 0 && sugItems[sugIndex] ? selectSug(sugIndex) : handleSend();
+          sugIndex >= 0 && sugItems[sugIndex]
+            ? selectSug(sugIndex)
+            : handleSend();
           return;
         }
-        if (e.key === 'ArrowDown') { e.preventDefault(); moveSug(1); }
-        if (e.key === 'ArrowUp') { e.preventDefault(); moveSug(-1); }
-        if (e.key === 'Escape') hideSuggestions();
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          moveSug(1);
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          moveSug(-1);
+        }
+        if (e.key === "Escape") hideSuggestions();
       });
 
-      input.addEventListener('input', () => {
+      input.addEventListener("input", () => {
         clearTimeout(sugTimer);
         sugTimer = setTimeout(fetchSuggestions, 200);
       });
@@ -589,9 +731,12 @@
       /* ── Autocomplete ───────────────────────────────────────── */
       async function fetchSuggestions() {
         const q = input.value.trim();
-        if (q.length < 2) { hideSuggestions(); return; }
+        if (q.length < 2) {
+          hideSuggestions();
+          return;
+        }
         try {
-          const r = await fetch('/api/suggest?q=' + encodeURIComponent(q));
+          const r = await fetch("/api/suggest?q=" + encodeURIComponent(q));
           const d = await r.json();
           sugItems = d.suggestions || [];
           renderSuggestions();
@@ -599,27 +744,36 @@
       }
 
       function renderSuggestions() {
-        if (!sugItems.length) { hideSuggestions(); return; }
+        if (!sugItems.length) {
+          hideSuggestions();
+          return;
+        }
         sugIndex = -1;
-        sugBox.innerHTML = sugItems.map((s, i) =>
-          `<div class="sug-item" onclick="selectSug(${i})">
+        sugBox.innerHTML = sugItems
+          .map(
+            (s, i) =>
+              `<div class="sug-item" onclick="selectSug(${i})">
             <span class="sug-code">${esc(s.code)}</span>
             <span class="sug-name">${esc(s.name)}</span>
-          </div>`
-        ).join('');
-        sugBox.style.display = 'block';
+          </div>`,
+          )
+          .join("");
+        sugBox.style.display = "block";
       }
 
-      function hideSuggestions() { sugBox.style.display = 'none'; sugIndex = -1; }
+      function hideSuggestions() {
+        sugBox.style.display = "none";
+        sugIndex = -1;
+      }
 
       function moveSug(dir) {
-        const items = sugBox.querySelectorAll('.sug-item');
+        const items = sugBox.querySelectorAll(".sug-item");
         if (!items.length) return;
-        items[sugIndex]?.classList.remove('active');
+        items[sugIndex]?.classList.remove("active");
         sugIndex = Math.max(-1, Math.min(items.length - 1, sugIndex + dir));
         if (sugIndex >= 0) {
-          items[sugIndex].classList.add('active');
-          items[sugIndex].scrollIntoView({ block: 'nearest' });
+          items[sugIndex].classList.add("active");
+          items[sugIndex].scrollIntoView({ block: "nearest" });
           input.value = sugItems[sugIndex].code;
         }
       }
@@ -630,8 +784,8 @@
         sendQuery(sugItems[i].code);
       }
 
-      document.addEventListener('click', e => {
-        if (!e.target.closest('#inputwrap')) hideSuggestions();
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest("#inputwrap")) hideSuggestions();
       });
     </script>
   </body>
