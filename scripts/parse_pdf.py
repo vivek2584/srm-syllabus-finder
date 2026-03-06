@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS courses (
     cos       TEXT    DEFAULT '[]',
     units     TEXT    DEFAULT '[]',
     resources TEXT    DEFAULT '[]',
-    raw_text  TEXT    DEFAULT ''
+    raw_text  TEXT    DEFAULT '',
+    start_page INTEGER DEFAULT 0,
+    end_page   INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_code ON courses(code);
 CREATE INDEX IF NOT EXISTS idx_name ON courses(name);
@@ -55,6 +57,12 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     for stmt in CREATE_SQL.strip().split(";"):
         if stmt.strip():
             conn.execute(stmt)
+    # Add columns if they do not exist
+    try:
+        conn.execute("ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0")
+        conn.execute("ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # Already created
     conn.commit()
     return conn
 
@@ -502,15 +510,15 @@ def run(debug: bool = False):
             conn.execute(
                 """INSERT OR REPLACE INTO courses
                    (code, name, category, l, t, p, c, department, prereq, coreq,
-                    clrs, cos, units, resources, raw_text)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    clrs, cos, units, resources, raw_text, start_page, end_page)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     data["code"], data["name"], data["category"],
                     data["l"], data["t"], data["p"], data["c"],
                     data["department"], data["prereq"], data["coreq"],
                     json.dumps(data["clrs"]),  json.dumps(data["cos"]),
                     json.dumps(data["units"]), json.dumps(data["resources"]),
-                    data["raw_text"]
+                    data["raw_text"], si, ei
                 )
             )
             ok += 1

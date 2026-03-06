@@ -512,47 +512,46 @@
         const btn = el.querySelector('.pdf-btn');
         if (btn) btn.innerHTML = '<span class="dot-flashing" style="margin-right:8px;padding:0"><span></span><span></span><span></span></span> Generating...';
 
-        const contentHtml = el.querySelector('.content').innerHTML;
-
-        const printArea = document.createElement('div');
-        printArea.innerHTML = `
-          <div style="font-family: 'Inter', system-ui, sans-serif; color: #000; background: #fff; padding: 20px;">
-             <h1 style="border-bottom: 2px solid #efefef; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; color: #111827;">
-               ${esc(lastQueryContext)} - Syllabus
-             </h1>
-             <div class="pdf-body" style="font-size: 14px; line-height: 1.6;">
-               ${contentHtml}
-             </div>
-          </div>
-        `;
-
-        const style = document.createElement('style');
-        style.innerText = `
-          .pdf-body h2 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 10px; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
-          .pdf-body h3 { font-size: 16px; font-weight: 600; margin-top: 15px; margin-bottom: 8px; color: #3b82f6; }
-          .pdf-body p { margin-bottom: 10px; }
-          .pdf-body ul, .pdf-body ol { margin-left: 20px; margin-bottom: 10px; }
-          .pdf-body li { margin-bottom: 5px; }
-          .pdf-body code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px; color: #000; }
-          .pdf-body strong { font-weight: 600; color: #000; }
-        `;
-        printArea.appendChild(style);
-
-        const filename = lastQueryContext.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_syllabus.pdf';
-
-        const opt = {
-          margin:       0.5,
-          filename:     filename,
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2, useCORS: true },
-          jsPDF:        { unit: 'in', format: 'A4', orientation: 'portrait' }
-        };
-
         try {
-          await html2pdf().set(opt).from(printArea).save();
+            // Find the course code from the context or the response content
+            let codeToFetch = '';
+            if (isDirectSearch(lastQueryContext)) {
+                 codeToFetch = lastQueryContext.trim();
+            } else {
+                 const codeMatch = el.querySelector('.content').textContent.match(/\b21[A-Z]{2,5}\d{3}[A-Z]?\b/i);
+                 if (codeMatch) codeToFetch = codeMatch[0];
+            }
+
+            if (!codeToFetch) {
+                alert("Could not identify a clear course code to download its PDF.");
+                return;
+            }
+
+            // Fetch the PDF as a blob so we control the filename
+            const response = await fetch(`/api/pdf/${encodeURIComponent(codeToFetch)}`);
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                alert('Download failed: ' + (err.detail || response.statusText));
+                return;
+            }
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = `${codeToFetch.toUpperCase()}_Syllabus.pdf`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(objectUrl);
+            }, 1000);
+
         } catch (err) {
-          console.error('PDF Generation Failed', err);
-          alert('Failed to generate PDF.');
+          console.error('PDF Download Failed', err);
+          alert('Failed to download PDF.');
         } finally {
           if (btn) btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF`;
         }

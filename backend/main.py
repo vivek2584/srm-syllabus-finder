@@ -16,12 +16,14 @@ import json
 import os
 import re
 import sqlite3
+import io
 from pathlib import Path
 
+import pypdf
 import chromadb
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -29,6 +31,7 @@ ROOT         = Path(__file__).parent.parent
 DB_PATH      = ROOT / "data" / "syllabi.db"
 CHROMA_DIR   = ROOT / "data" / "chroma"
 FRONTEND_DIR = ROOT / "frontend"
+PDF_DOC_PATH = ROOT / "computing-programmes-syllabus-2021.pdf"
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="SRM Syllabus Finder", version="2.0.0")
@@ -241,6 +244,48 @@ def get_course(code: str):
             "course":   row_to_dict(row),
             "response": format_markdown(row),
         }
+    finally:
+        conn.close()
+
+
+@app.get("/api/pdf/{code}")
+def get_pdf(code: str):
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT start_page, end_page FROM courses WHERE UPPER(code) = ?", (code.upper(),)
+        ).fetchone()
+        
+        if not row:
+            raise HTTPException(404, f"Course {code} not found")
+        
+        start_page = row["start_page"]
+        end_page = row["end_page"]
+        
+        if not PDF_DOC_PATH.exists():
+            raise HTTPException(503, "Original PDF document not found on the server.")
+            
+        # Extract the specific pages using pypdf
+        reader = pypdf.PdfReader(str(PDF_DOC_PATH))
+        writer = pypdf.PdfWriter()
+        
+        # Valid bounds check for robustness
+        start_page = max(0, start_page)
+        end_page = min(len(reader.pages), end_page) if end_page > start_page else start_page + 1
+
+        for i in range(start_page, end_page):
+            writer.add_page(reader.pages[i])
+            
+        output_stream = io.BytesIO()
+        writer.write(output_stream)
+        output_stream.seek(0)
+        
+        filename = f"{code.upper()}_Syllabus.pdf"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+        
+        return Response(content=output_stream.read(), media_type="application/pdf", headers=headers)
     finally:
         conn.close()
 
