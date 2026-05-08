@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-parse_pdf.py — Extract all course syllabi from the SRM PDF into SQLite.
+parse_pdf.py — Extract all course syllabi from an SRM syllabus PDF into SQLite.
 
 Usage:
     python scripts/parse_pdf.py
-    python scripts/parse_pdf.py --debug   # prints sample extraction to stdout
+    python scripts/parse_pdf.py --pdf csbs-syllabus-2021.pdf
+    python scripts/parse_pdf.py --pdf csbs-syllabus-2021.pdf --skip-existing
+    python scripts/parse_pdf.py --debug
 """
 
 import sys
@@ -16,9 +18,9 @@ import argparse
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).parent.parent
-PDF_PATH  = ROOT / "computing-programmes-syllabus-2021.pdf"
-DB_PATH   = ROOT / "data" / "syllabi.db"
+ROOT    = Path(__file__).parent.parent
+DB_PATH = ROOT / "data" / "syllabi.db"
+DEFAULT_PDF = "computing-programmes-syllabus-2021.pdf"
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 RE_CODE    = re.compile(r'\b(21[A-Z]{2,5}\d{3}[A-Z]?)\b')
@@ -28,24 +30,25 @@ RE_CREDITS = re.compile(r'\b(\d)\s+(\d)\s+(\d)\s+(\d)\b')
 # ── DB helpers ────────────────────────────────────────────────────────────────
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS courses (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    code      TEXT    UNIQUE NOT NULL,
-    name      TEXT    NOT NULL,
-    category  TEXT    DEFAULT '',
-    l         INTEGER DEFAULT 0,
-    t         INTEGER DEFAULT 0,
-    p         INTEGER DEFAULT 0,
-    c         INTEGER DEFAULT 0,
-    department TEXT   DEFAULT '',
-    prereq    TEXT    DEFAULT 'Nil',
-    coreq     TEXT    DEFAULT 'Nil',
-    clrs      TEXT    DEFAULT '[]',
-    cos       TEXT    DEFAULT '[]',
-    units     TEXT    DEFAULT '[]',
-    resources TEXT    DEFAULT '[]',
-    raw_text  TEXT    DEFAULT '',
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    code       TEXT    UNIQUE NOT NULL,
+    name       TEXT    NOT NULL,
+    category   TEXT    DEFAULT '',
+    l          INTEGER DEFAULT 0,
+    t          INTEGER DEFAULT 0,
+    p          INTEGER DEFAULT 0,
+    c          INTEGER DEFAULT 0,
+    department TEXT    DEFAULT '',
+    prereq     TEXT    DEFAULT 'Nil',
+    coreq      TEXT    DEFAULT 'Nil',
+    clrs       TEXT    DEFAULT '[]',
+    cos        TEXT    DEFAULT '[]',
+    units      TEXT    DEFAULT '[]',
+    resources  TEXT    DEFAULT '[]',
+    raw_text   TEXT    DEFAULT '',
     start_page INTEGER DEFAULT 0,
-    end_page   INTEGER DEFAULT 0
+    end_page   INTEGER DEFAULT 0,
+    source_pdf TEXT    DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_code ON courses(code);
 CREATE INDEX IF NOT EXISTS idx_name ON courses(name);
@@ -57,12 +60,16 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     for stmt in CREATE_SQL.strip().split(";"):
         if stmt.strip():
             conn.execute(stmt)
-    # Add columns if they do not exist
-    try:
-        conn.execute("ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0")
-        conn.execute("ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass # Already created
+    # Add columns if they do not exist (migrations for older DBs)
+    for col_def in [
+        "ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0",
+        "ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0",
+        "ALTER TABLE courses ADD COLUMN source_pdf TEXT DEFAULT ''",
+    ]:
+        try:
+            conn.execute(col_def)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     return conn
 
@@ -277,7 +284,88 @@ def _strip_po_noise(v: str) -> str:
     return v.strip()
 
 
+# ── PO score line patterns ────────────────────────────────────────────────────
+# Matches a line that is ONLY PO scores / dashes / Outcomes header:
+#   "1 2 3 4 5 6 7 8 9 10 11 12 Outcomes" or "3 - - 3 - - ..."
+_RE_PO_ONLY_LINE = re.compile(
+    r'^\s*(?:[\d\-]+\s+){3,}[\d\-]+(?:\s+(?:Outcomes?|PSO\d?))?\s*$'
+)
+# Matches PO scores appended inline at end of a CLR/CO text line:
+#   "some text 1 2 3 4 5 6 7 8 9 10 11 12 Outcomes"
+_RE_INLINE_PO = re.compile(
+    r'\s+(?:\d+\s+){5,}\d+(?:\s+(?:Outcomes?|PSO\d?))?\s*$'
+)
+
+
+def _reconstruct_clr_co_text(section: str) -> str:
+    """Pre-process CLR/CO section to fix two-column PDF layout artifacts.
+
+    The PDF has two columns: (left) CLR/CO text, (right) PO score table.
+    pdfplumber merges them producing these artifact patterns:
+
+    Pattern A: PO scores inline at end of text line -> strip them.
+    Pattern B: PO-only line between label and its text -> skip PO line.
+    Pattern C: Bare label (no text after stripping PO scores) -> inline
+               the next non-label line as the actual item text.
+    """
+    _RE_LABEL = re.compile(r'^\s*(CLR|CO)[-\s]*\d+\s*[:\-]', re.IGNORECASE)
+
+    # Pass 1: strip PO score noise line-by-line
+    lines = section.split('\n')
+    pass1 = []
+    for line in lines:
+        if _RE_PO_ONLY_LINE.match(line):
+            continue                    # drop PO-score-only lines
+        cleaned = _RE_INLINE_PO.sub('', line).rstrip()
+        pass1.append(cleaned)
+
+    # Pass 2: for bare label lines (e.g. "CLR-2:" with no text after colon),
+    # append the next non-empty, non-label line as the item text.
+    result = []
+    j = 0
+    while j < len(pass1):
+        line = pass1[j]
+        result.append(line)
+        stripped = line.strip()
+        is_bare_label = (
+            bool(_RE_LABEL.match(stripped))
+            and len(stripped) < 12      # "CLR-2:" or "CO-4:" only (no body)
+        )
+        if is_bare_label:
+            k = j + 1
+            while k < len(pass1) and not pass1[k].strip():
+                k += 1
+            if k < len(pass1) and not _RE_LABEL.match(pass1[k].strip()):
+                result[-1] = stripped + ' ' + pass1[k].strip()
+                j = k + 1
+                continue
+        j += 1
+
+    return '\n'.join(result)
+
+def _strip_interitem_garbage(v: str) -> str:
+    """Strip page-footer artifacts that get captured between CLR/CO items.
+
+    When the PO score table is on the same page as a page break footer,
+    pdfplumber inserts page numbers, '/', '&' fragments between items.
+    E.g.: 'applications 327 / & & & CLR-3: ...' -> 'applications'
+    """
+    # Remove standalone page numbers (1-3 digit numbers on their own)
+    v = re.sub(r'\s+\d{1,3}\s*$', '', v)
+    v = re.sub(r'^\s*\d{1,3}\s+', '', v)
+    # Remove lines that are only &, /, whitespace fragments
+    lines = [ln for ln in v.split('\n')
+             if re.search(r'[A-Za-z]{2,}', ln)]   # keep only lines with real words
+    v = ' '.join(lines)
+    # Strip residual &, /, single-char noise
+    v = re.sub(r'(?<![A-Za-z])(&|/)(?![A-Za-z])', ' ', v)
+    return v.strip()
+
+
 def parse_clrs(text: str) -> list[str]:
+    # Pre-process to remove PO column noise
+    text = _reconstruct_clr_co_text(text)
+
     items = re.findall(
         r'CLR[-\s]*(\d+)\s*[:\-]\s*(.+?)(?=CLR[-\s]*\d+\s*[:\-]|Course Outcomes|CO[-\s]*\d+|$)',
         text, re.DOTALL | re.IGNORECASE
@@ -285,8 +373,18 @@ def parse_clrs(text: str) -> list[str]:
     cleaned = []
     for n, v in items:
         v = v.strip()
-        # Strip leading PO matrix scores if they appear right after the label
-        v = re.sub(r'^[\d\s\-]{8,}(?:Outcomes?)?\s*', '', v)
+        # Strip any residual leading PO scores (belt-and-suspenders)
+        v = re.sub(r'^[\d\s\-\']{8,}(?:Outcomes?)?\s*', '', v)
+        # Strip reversed-word garbage column from the PO header
+        v = re.sub(
+            r'(?:egdelwonK|gnireenignE|sisylanA|melborP|ngiseD|snoitulos'
+            r'|snoitagitsevni|tcudnoC|smelborp|xelpmoc|egasU|looT|nredoM'
+            r'|yteicos|tnemnorivnE|ytilibaniatsuS|scihtE|kroW|maeT'
+            r'|laudividnI|noitacinummoC|ecnaniF|tcejorP|gninraeL|efiL'
+            r'|1-OSP|2-OSP|3-OSP|fo|dna|ehT)[\s\n]+',
+            ' ', v, flags=re.IGNORECASE
+        )
+        v = _strip_interitem_garbage(v)
         v = _strip_po_noise(v)
         v = ' '.join(v.split())   # collapse whitespace
         if len(v) > 10:
@@ -295,6 +393,9 @@ def parse_clrs(text: str) -> list[str]:
 
 
 def parse_cos(text: str) -> list[str]:
+    # Pre-process to remove PO column noise
+    text = _reconstruct_clr_co_text(text)
+
     items = re.findall(
         r'\bCO[-\s]*(\d+)\s*[:\-]\s*(.+?)(?=\bCO[-\s]*\d+\s*[:\-]|Unit[-\s]*1\b|$)',
         text, re.DOTALL | re.IGNORECASE
@@ -302,8 +403,18 @@ def parse_cos(text: str) -> list[str]:
     cleaned = []
     for n, v in items:
         v = v.strip()
-        # Strip leading PO scores that appear right after the label
+        # Strip residual leading PO scores
         v = re.sub(r'^[\d\s\-\']{8,}', '', v)
+        # Strip reversed-word garbage
+        v = re.sub(
+            r'(?:egdelwonK|gnireenignE|sisylanA|melborP|ngiseD|snoitulos'
+            r'|snoitagitsevni|tcudnoC|smelborp|xelpmoc|egasU|looT|nredoM'
+            r'|yteicos|tnemnorivnE|ytilibaniatsuS|scihtE|kroW|maeT'
+            r'|laudividnI|noitacinummoC|ecnaniF|tcejorP|gninraeL|efiL'
+            r'|1-OSP|2-OSP|3-OSP|fo|dna|ehT)[\s\n]+',
+            ' ', v, flags=re.IGNORECASE
+        )
+        v = _strip_interitem_garbage(v)
         v = _strip_po_noise(v)
         v = ' '.join(v.split())
         if len(v) > 10:
@@ -440,44 +551,125 @@ def _sanitize_resource(text: str) -> str:
 def parse_resources(text: str) -> list[str]:
     """
     Learning Resources appear in a two-column PDF table.  pdfplumber flattens
-    this so the header "Learning Resources" gets split across lines ('Learning'
-    on one line, 'Resources' on the next) and the numbered references are
-    interleaved with those fragments.
+    both columns into single lines, causing:
+      - Entry 1 (left col) and Entry 4 (right col) merged on the same line
+      - Entry continuation on the next line
+      - Lab Experiments sub-section using the same numbered format
+      - Words split across lines by hyphenation
 
-    Strategy: find the region after the last unit block and before
-    "Learning Assessment" / "Course Designers", then collect all numbered
-    entries that look like academic references or URLs.
+    Strategy:
+    1. Locate the resources section (after last Unit, before Learning Assessment)
+    2. Skip any Lab Experiments sub-section
+    3. Flatten the section and split on ALL numbered markers (including inline ones)
+    4. Clean each entry individually
     """
-    # Locate the end of the last unit (try 5, then 4, then 3)
+    # 1. Locate the resources section
     last_unit = None
     for u in (5, 4, 3):
-        matches = list(re.finditer(rf'Unit[-\s]*{u}\s*[-–:]', text, re.IGNORECASE))
+        matches = list(re.finditer(rf'Unit[-\s]*{u}\s*[-\u2013:]', text, re.IGNORECASE))
         if matches:
             last_unit = matches[-1]
             break
     start = last_unit.start() if last_unit else 0
 
-    # Find the end boundary
     end_markers = list(re.finditer(
         r'(Learning\s+Assessment|Course\s+Designers)',
         text[start:], re.IGNORECASE
     ))
     end = start + end_markers[0].start() if end_markers else len(text)
-
     section = text[start:end]
 
-    # Match numbered entries: "1. Author, Title, Publisher, Year" or "1. https://..."
-    raw = re.findall(r'\b\d+\.\s+([A-Z][^0-9\n]{10,}|https?://[^\s\n]+)', section)
-    results = []
-    for item in raw:
-        clean = _sanitize_resource(item)
-        # Ignore very short or obviously wrong entries
-        if len(clean) > 15 and not re.match(r'^(Lab|Unit|Course\s+Offering|Learning)', clean, re.IGNORECASE):
-            results.append(clean)
-        elif clean.startswith('http') and len(clean) > 10:
-            results.append(clean)
-    return results
+    # 2. Skip Lab Experiments sub-section
+    # Lab experiments appear right after Unit-5 content and before book references.
+    # Detect the first real publisher/author keyword to mark where books start.
+    PUBLISHER_PAT = re.compile(
+        r'(?:Wiley|Pearson|Springer|McGraw|Prentice|Tata|Oxford|Cambridge|CRC|Elsevier'
+        r'|PHI|Apress|O.Reilly|O\'Reilly|Morgan|Addison|Chapman|Cengage|Packt'
+        r'|Press\b|Edition\b|Publication|ISBN)',
+        re.IGNORECASE
+    )
+    pub_match = PUBLISHER_PAT.search(section)
+    if pub_match:
+        # Walk backwards from first publisher to find a numbered entry start
+        pre = section[:pub_match.start()]
+        lab_hdr = re.search(r'\bLab\s+Experiments?\b', pre, re.IGNORECASE)
+        if lab_hdr:
+            # Find the numbered entry that contains/precedes the publisher match
+            num_before = list(re.finditer(r'(?<!\d)(\d+)\.\s+[A-Z]', section[:pub_match.start() + 50]))
+            if num_before:
+                section = section[num_before[-1].start():]
 
+    # 3. Flatten: join continuation lines (lines that don't start with a number)
+    #    but keep newlines that separate entries.
+    # First, replace newlines that split mid-word (lower-case start after alpha end)
+    section = re.sub(r'(?<=[A-Za-z])\n(?=[a-z])', '', section)
+    # Then, join other continuation lines (non-numbered) to the previous line
+    lines = section.split('\n')
+    joined_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r'^\d+\.', line) or not joined_lines:
+            joined_lines.append(line)
+        else:
+            joined_lines[-1] += ' ' + line
+
+    # 4. Re-flatten into a single string and extract all numbered entries
+    flat = ' '.join(joined_lines)
+    # Split on numbered markers (handles inline: "...Press. 4. Next Author...")
+    raw_entries = re.split(r'(?<!\d)\b(\d+)\.\s+', flat)
+
+    # raw_entries alternates: [pre_text, num, body, num, body, ...]
+    entries: list[tuple[int, str]] = []
+    i = 1
+    while i + 1 < len(raw_entries):
+        try:
+            num = int(raw_entries[i])
+            body = raw_entries[i + 1].strip()
+            entries.append((num, body))
+        except (ValueError, IndexError):
+            pass
+        i += 2
+
+    # 5. Clean and filter
+    _RE_LAB_TASK = re.compile(
+        r'^(Implement\b|Design\b|Study\b|Configure\b|Install\b|Build\b|Develop\b'
+        r'|Test\b|Create\b|Simulate\b|Analyze\b|Lab\s+Experiments?'
+        r'|Unit[-\s]*\d|Course\s+Offering|Learning\b|Resources\b)',
+        re.IGNORECASE
+    )
+
+    results = []
+    seen: set[str] = set()
+
+    for num, body in sorted(entries, key=lambda x: x[0]):
+        clean = _sanitize_resource(body)
+
+        # Skip lab tasks and headers
+        if _RE_LAB_TASK.match(clean):
+            continue
+        # Skip too short
+        if len(clean) < 15:
+            continue
+        # Deduplicate
+        key = clean[:40].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # URL entries
+        if clean.startswith('http'):
+            results.append(clean)
+            continue
+
+        # Must start with uppercase (author/title)
+        if not clean[0].isupper() and not clean[0].isdigit():
+            continue
+
+        results.append(clean)
+
+    return results
 
 def parse_block(text: str, code: str) -> dict:
     cleaned = clean_text(text)   # remove PDF artefacts before parsing
@@ -502,12 +694,24 @@ def parse_block(text: str, code: str) -> dict:
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
-def run(debug: bool = False):
-    if not PDF_PATH.exists():
-        sys.exit(f"PDF not found at {PDF_PATH}")
+def run(pdf_path: Path = None, skip_existing: bool = False, debug: bool = False):
+    if pdf_path is None:
+        pdf_path = ROOT / DEFAULT_PDF
+
+    if not pdf_path.exists():
+        sys.exit(f"PDF not found at {pdf_path}")
+
+    pdf_filename = pdf_path.name
+    insert_sql = (
+        "INSERT OR IGNORE" if skip_existing else "INSERT OR REPLACE"
+    )
+
+    print(f"PDF: {pdf_filename}")
+    if skip_existing:
+        print("  Mode: --skip-existing (existing courses will NOT be overwritten)")
 
     print("Step 1/4 — Extracting pages from PDF ...")
-    pages = extract_pages(PDF_PATH, verbose=not debug)
+    pages = extract_pages(pdf_path, verbose=not debug)
 
     print("Step 2/4 — Finding course boundaries ...")
     starts = find_course_starts(pages)
@@ -519,7 +723,7 @@ def run(debug: bool = False):
             si, code = starts[i]
             ei = starts[i + 1][0] if i + 1 < len(starts) else si + 4
             block = "\n".join(pages[si:ei])
-            print(f"\n--- Course {code} (pages {si}–{ei}) ---")
+            print(f"\n--- Course {code} (pages {si}\u2013{ei}) ---")
             print(block[:2000])
         return
 
@@ -534,17 +738,19 @@ def run(debug: bool = False):
 
         try:
             conn.execute(
-                """INSERT OR REPLACE INTO courses
+                f"""{insert_sql} INTO courses
                    (code, name, category, l, t, p, c, department, prereq, coreq,
-                    clrs, cos, units, resources, raw_text, start_page, end_page)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    clrs, cos, units, resources, raw_text, start_page, end_page,
+                    source_pdf)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     data["code"], data["name"], data["category"],
                     data["l"], data["t"], data["p"], data["c"],
                     data["department"], data["prereq"], data["coreq"],
                     json.dumps(data["clrs"]),  json.dumps(data["cos"]),
                     json.dumps(data["units"]), json.dumps(data["resources"]),
-                    data["raw_text"], si, ei
+                    data["raw_text"], si, ei,
+                    pdf_filename
                 )
             )
             ok += 1
@@ -564,7 +770,24 @@ def run(debug: bool = False):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--debug", action="store_true", help="Print sample extraction and exit")
+    ap = argparse.ArgumentParser(
+        description="Extract SRM syllabus courses from a PDF into SQLite."
+    )
+    ap.add_argument(
+        "--pdf",
+        default=DEFAULT_PDF,
+        help=f"PDF filename (relative to project root). Default: {DEFAULT_PDF}",
+    )
+    ap.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Use INSERT OR IGNORE so existing course records are not overwritten.",
+    )
+    ap.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print sample extraction and exit without writing to DB.",
+    )
     args = ap.parse_args()
-    run(debug=args.debug)
+    pdf_path = ROOT / args.pdf
+    run(pdf_path=pdf_path, skip_existing=args.skip_existing, debug=args.debug)

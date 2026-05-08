@@ -32,18 +32,33 @@ ROOT         = Path(__file__).parent.parent
 DB_PATH      = ROOT / "data" / "syllabi.db"
 CHROMA_DIR   = ROOT / "data" / "chroma"
 FRONTEND_DIR = ROOT / "frontend"
-PDF_DOC_PATH = ROOT / "computing-programmes-syllabus-2021.pdf"
 
-# ── Cached PDF reader (avoid re-reading 183 MB on every request) ─────────────
-_pdf_reader: pypdf.PdfReader | None = None
+# Registry of all known syllabus PDFs (filename → full path).
+# Add new PDFs here when they are ingested.
+_KNOWN_PDFS = {
+    "computing-programmes-syllabus-2021.pdf": ROOT / "computing-programmes-syllabus-2021.pdf",
+    "csbs-syllabus-2021.pdf":                 ROOT / "csbs-syllabus-2021.pdf",
+}
 
-def get_pdf_reader() -> pypdf.PdfReader:
-    global _pdf_reader
-    if _pdf_reader is None:
-        if not PDF_DOC_PATH.exists():
-            raise HTTPException(503, "Original PDF document not found on the server.")
-        _pdf_reader = pypdf.PdfReader(str(PDF_DOC_PATH))
-    return _pdf_reader
+# Default PDF (used when source_pdf column is empty/missing)
+_DEFAULT_PDF = "computing-programmes-syllabus-2021.pdf"
+
+# ── Cached PDF readers (one per file, avoid re-reading on every request) ──────
+_pdf_readers: dict[str, pypdf.PdfReader] = {}
+
+def get_pdf_reader(filename: str | None = None) -> pypdf.PdfReader:
+    """Return a cached PdfReader for the given PDF filename."""
+    fname = filename or _DEFAULT_PDF
+    if fname not in _pdf_readers:
+        pdf_path = _KNOWN_PDFS.get(fname)
+        if pdf_path is None or not pdf_path.exists():
+            raise HTTPException(
+                503,
+                f"PDF file '{fname}' not found on the server. "
+                "Ensure the PDF is present in the project root.",
+            )
+        _pdf_readers[fname] = pypdf.PdfReader(str(pdf_path))
+    return _pdf_readers[fname]
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="SRM Syllabus Finder", version="2.0.0")
@@ -98,40 +113,47 @@ _db_migrated = False
 RE_LTPC = re.compile(r'\bL\s+T\s+P\s+C\b')
 
 def _ensure_schema(conn: sqlite3.Connection):
-    """Add start_page/end_page columns if missing, and auto-populate them."""
+    """Add start_page/end_page/source_pdf columns if missing, and auto-populate them."""
     global _db_migrated
     if _db_migrated:
         return
 
     cols = {row[1] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
-    if "start_page" not in cols:
-        conn.execute("ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0")
-    if "end_page" not in cols:
-        conn.execute("ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0")
+    for col_name, col_def in [
+        ("start_page", "ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0"),
+        ("end_page",   "ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0"),
+        ("source_pdf", "ALTER TABLE courses ADD COLUMN source_pdf TEXT DEFAULT ''"),
+    ]:
+        if col_name not in cols:
+            conn.execute(col_def)
     conn.commit()
 
-    # Check if page numbers are populated
-    populated = conn.execute(
-        "SELECT COUNT(*) FROM courses WHERE start_page != 0 OR end_page != 0"
-    ).fetchone()[0]
-
-    if populated == 0 and PDF_DOC_PATH.exists():
-        _populate_page_numbers(conn)
+    # Back-fill page numbers for any PDF whose courses have start_page == 0
+    for pdf_filename, pdf_path in _KNOWN_PDFS.items():
+        if not pdf_path.exists():
+            continue
+        need_fill = conn.execute(
+            "SELECT COUNT(*) FROM courses "
+            "WHERE (source_pdf = ? OR source_pdf = '') AND (start_page = 0 AND end_page = 0)",
+            (pdf_filename,)
+        ).fetchone()[0]
+        if need_fill > 0:
+            _populate_page_numbers(conn, pdf_path, pdf_filename)
 
     _db_migrated = True
 
 
-def _populate_page_numbers(conn: sqlite3.Connection):
-    """Scan the PDF to find course boundaries and write them to the DB."""
+def _populate_page_numbers(conn: sqlite3.Connection, pdf_path: Path, pdf_filename: str):
+    """Scan a PDF to find course boundaries and write them to the DB."""
     try:
         import pdfplumber
     except ImportError:
         logging.warning("pdfplumber not installed — cannot auto-populate page numbers")
         return
 
-    logging.info("Auto-populating page numbers from PDF...")
+    logging.info(f"Auto-populating page numbers from {pdf_filename}...")
     pages = []
-    with pdfplumber.open(str(PDF_DOC_PATH)) as pdf:
+    with pdfplumber.open(str(pdf_path)) as pdf:
         for page in pdf.pages:
             pages.append(page.extract_text() or "")
 
@@ -147,14 +169,14 @@ def _populate_page_numbers(conn: sqlite3.Connection):
     for idx, (si, code) in enumerate(starts):
         ei = starts[idx + 1][0] if idx + 1 < len(starts) else min(si + 5, len(pages))
         result = conn.execute(
-            "UPDATE courses SET start_page=?, end_page=? WHERE UPPER(code)=?",
-            (si, ei, code),
+            "UPDATE courses SET start_page=?, end_page=?, source_pdf=? WHERE UPPER(code)=?",
+            (si, ei, pdf_filename, code),
         )
         if result.rowcount > 0:
             updated += 1
 
     conn.commit()
-    logging.info(f"Populated page numbers for {updated} courses")
+    logging.info(f"Populated page numbers for {updated} courses from {pdf_filename}")
 
 
 def get_conn() -> sqlite3.Connection:
@@ -330,22 +352,25 @@ def get_pdf(code: str):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT start_page, end_page FROM courses WHERE UPPER(code) = ?", (code.upper(),)
+            "SELECT start_page, end_page, source_pdf FROM courses WHERE UPPER(code) = ?",
+            (code.upper(),)
         ).fetchone()
 
         if not row:
             raise HTTPException(404, f"Course {code} not found")
 
         start_page = row["start_page"]
-        end_page = row["end_page"]
+        end_page   = row["end_page"]
+        source_pdf = row["source_pdf"] or _DEFAULT_PDF
 
         if start_page == 0 and end_page == 0:
             raise HTTPException(
                 404,
-                f"Page data not available for {code}. Run: python scripts/update_page_numbers.py",
+                f"Page data not available for {code}. "
+                "Run: python scripts/update_page_numbers.py --pdf <filename>",
             )
 
-        reader = get_pdf_reader()
+        reader = get_pdf_reader(source_pdf)
         writer = pypdf.PdfWriter()
 
         # Valid bounds check for robustness

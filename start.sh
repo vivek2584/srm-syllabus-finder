@@ -25,10 +25,39 @@ if [ ! -f "$DB" ]; then
   echo ""
   echo "Database not found. Parsing PDF — this runs once and takes a few minutes..."
   "$PYTHON" "$ROOT/scripts/parse_pdf.py"
-else
-  COURSES=$(sqlite3 "$DB" "SELECT COUNT(*) FROM courses;" 2>/dev/null || echo "?")
-  echo "Database ready — $COURSES courses loaded."
 fi
+
+# 3a) Parse CSBS PDF if it exists and wasn't already loaded
+CSBS_PDF="$ROOT/csbs-syllabus-2021.pdf"
+if [ -f "$CSBS_PDF" ]; then
+  CSBS_COUNT=$(python3 -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('$DB')
+    n = conn.execute(\"SELECT COUNT(*) FROM courses WHERE source_pdf='csbs-syllabus-2021.pdf'\").fetchone()[0]
+    print(n)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+  if [ "$CSBS_COUNT" = "0" ]; then
+    echo ""
+    echo "Found csbs-syllabus-2021.pdf — parsing CSBS courses (new codes only)..."
+    "$PYTHON" "$ROOT/scripts/parse_pdf.py" --pdf csbs-syllabus-2021.pdf --skip-existing
+  else
+    echo "CSBS syllabus already loaded ($CSBS_COUNT courses)."
+  fi
+fi
+
+COURSES=$(python3 -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('$DB')
+    n = conn.execute('SELECT COUNT(*) FROM courses').fetchone()[0]
+    print(n)
+except:
+    print('?')
+" 2>/dev/null || echo "?")
+echo "Database ready — $COURSES courses loaded."
 
 # 3b) Build vector index (only if it doesn't exist yet)
 CHROMA_DIR="$ROOT/data/chroma"
