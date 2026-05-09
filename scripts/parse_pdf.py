@@ -468,7 +468,7 @@ def _clean_unit_content(content: str) -> str:
     from the end of unit content."""
     # Cut at the first occurrence of any end-of-syllabus marker
     end_markers = [
-        r'\b\d+\.\s+[A-Z][a-z]+\s+[A-Z].*?(?:Press|Edition|Publishing|McGraw|Pearson|Wiley|Springer|Prentice|Elsevier|Cambridge|Oxford|CRC|PHI|Tata)',
+        r'\b\d+\.\s+[A-Z].{0,250}?(?:Press|Edition|Publishing|McGraw|Pearson|Wiley|Springer|Prentice|Elsevier|Cambridge|Oxford|CRC|PHI|Tata)\b',
         r'\b\d+\.\s+https?://',                        # numbered URL resources
         r'Learning\s*\n?\s*Resources',                  # split-line "Learning\nResources"
         r'\bLearning\s+Assessment\b',
