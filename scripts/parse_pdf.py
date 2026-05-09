@@ -18,8 +18,9 @@ import argparse
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-ROOT    = Path(__file__).parent.parent
-DB_PATH = ROOT / "data" / "syllabi.db"
+ROOT       = Path(__file__).parent.parent
+DB_PATH    = ROOT / "data" / "syllabi.db"
+SYLLABI_DIR = ROOT / "syllabi"          # folder for all syllabus PDFs
 DEFAULT_PDF = "computing-programmes-syllabus-2021.pdf"
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
@@ -275,12 +276,14 @@ def _strip_po_noise(v: str) -> str:
     # Remove inline PO number sequences (e.g. "1 2 3 4 5 6 7 8 9 10 11 12")
     v = re.sub(r'\s+\d(?:\s+\d+){5,}(?:\s*Outcomes?)?', '', v)
     # Remove PO score rows (sequences of digits/dashes like "3 2 - - - - - - - - - - 1 - -")
-    # Use targeted removal — do NOT use .*$ as it destroys text after scores
     v = re.sub(r'(?:^|(?<=\s))[\d\-\']+(?:\s+[\d\-\']+){6,}', '', v)
     # Reversed-word garbage with & separators
     v = re.sub(r'\s+&\s+&.*$', '', v, flags=re.DOTALL)
     # Trailing orphan page numbers with optional slash (e.g. "...14 /")
     v = re.sub(r'\s+\d{1,3}\s*/?\s*$', '', v)
+    # Character-spaced PO table noise (PDFs with spaced-out rotated headers):
+    # e.g. "C C C C C L L L L o R R R R ur - - - - s 2 3 4 5"
+    v = re.sub(r'(?:\b\S\s){4,}\S.*$', '', v, flags=re.DOTALL)
     return v.strip()
 
 
@@ -373,9 +376,7 @@ def parse_clrs(text: str) -> list[str]:
     cleaned = []
     for n, v in items:
         v = v.strip()
-        # Strip any residual leading PO scores (belt-and-suspenders)
         v = re.sub(r'^[\d\s\-\']{8,}(?:Outcomes?)?\s*', '', v)
-        # Strip reversed-word garbage column from the PO header
         v = re.sub(
             r'(?:egdelwonK|gnireenignE|sisylanA|melborP|ngiseD|snoitulos'
             r'|snoitagitsevni|tcudnoC|smelborp|xelpmoc|egasU|looT|nredoM'
@@ -386,10 +387,33 @@ def parse_clrs(text: str) -> list[str]:
         )
         v = _strip_interitem_garbage(v)
         v = _strip_po_noise(v)
-        v = ' '.join(v.split())   # collapse whitespace
+        v = ' '.join(v.split())
         if len(v) > 10:
             cleaned.append(f"CLR-{n}: {v}")
-    return cleaned
+
+    # Join page-break continuations: only when the preceding entry body ends
+    # with a function word (preposition, article, conjunction, auxiliary) OR
+    # when the continuation is a single bare word/phrase with no verb — both
+    # indicate a genuine mid-clause truncation at a page boundary.
+    _TRUNCATED_TAIL = re.compile(
+        r'\b(the|a|an|of|in|to|for|and|or|on|at|by|with|its|their|various|'
+        r'different|certain|such|this|that|these|those|from|into|about|'
+        r'between|through|using|under|over)$', re.IGNORECASE
+    )
+    _SINGLE_NOUN = re.compile(r'^\w+(?:\s+\w+){0,2}[,.]?$')  # 1-3 word bare phrase
+    merged = []
+    for entry in cleaned:
+        body = entry.split(':', 1)[-1].strip()
+        is_tail = _TRUNCATED_TAIL.search(merged[-1]) if merged else False
+        is_bare = _SINGLE_NOUN.match(body) and len(body) < 20
+        if merged and (is_tail and len(body) < 30) or (is_bare and is_tail):
+            merged[-1] = merged[-1].rstrip('.') + ' ' + body
+        elif merged and is_bare and len(body) <= 10:
+            # Single very-short bare word — almost certainly a page-break tail
+            merged[-1] = merged[-1].rstrip('.') + ' ' + body
+        else:
+            merged.append(entry)
+    return merged
 
 
 def parse_cos(text: str) -> list[str]:
@@ -397,15 +421,13 @@ def parse_cos(text: str) -> list[str]:
     text = _reconstruct_clr_co_text(text)
 
     items = re.findall(
-        r'\bCO[-\s]*(\d+)\s*[:\-]\s*(.+?)(?=\bCO[-\s]*\d+\s*[:\-]|Unit[-\s]*1\b|$)',
+        r'\bCO[-\s]*(\d+)\s*[:\-]\s*(.+?)(?=\bCO[-\s]*\d+\s*[:\-]|Unit[-\s]*(?:\d+|I{1,3}V?|VI{0,3})\b|$)',
         text, re.DOTALL | re.IGNORECASE
     )
     cleaned = []
     for n, v in items:
         v = v.strip()
-        # Strip residual leading PO scores
         v = re.sub(r'^[\d\s\-\']{8,}', '', v)
-        # Strip reversed-word garbage
         v = re.sub(
             r'(?:egdelwonK|gnireenignE|sisylanA|melborP|ngiseD|snoitulos'
             r'|snoitagitsevni|tcudnoC|smelborp|xelpmoc|egasU|looT|nredoM'
@@ -419,7 +441,26 @@ def parse_cos(text: str) -> list[str]:
         v = ' '.join(v.split())
         if len(v) > 10:
             cleaned.append(f"CO-{n}: {v}")
-    return cleaned
+
+    # Join page-break continuations (same logic as parse_clrs)
+    _TRUNCATED_TAIL = re.compile(
+        r'\b(the|a|an|of|in|to|for|and|or|on|at|by|with|its|their|various|'
+        r'different|certain|such|this|that|these|those|from|into|about|'
+        r'between|through|using|under|over)$', re.IGNORECASE
+    )
+    _SINGLE_NOUN = re.compile(r'^\w+(?:\s+\w+){0,2}[,.]?$')
+    merged = []
+    for entry in cleaned:
+        body = entry.split(':', 1)[-1].strip()
+        is_tail = _TRUNCATED_TAIL.search(merged[-1]) if merged else False
+        is_bare = _SINGLE_NOUN.match(body) and len(body) < 20
+        if merged and (is_tail and len(body) < 30) or (is_bare and is_tail):
+            merged[-1] = merged[-1].rstrip('.') + ' ' + body
+        elif merged and is_bare and len(body) <= 10:
+            merged[-1] = merged[-1].rstrip('.') + ' ' + body
+        else:
+            merged.append(entry)
+    return merged
 
 
 def _clean_unit_content(content: str) -> str:
@@ -450,84 +491,78 @@ def _clean_unit_content(content: str) -> str:
 
 
 def parse_units(text: str) -> list[dict]:
-    # Boundary pattern shared by both primary and fallback regexes
-    _UNIT_END = r'(?=Unit[-\s]*\d\s*[-–:]|Learning\s*\n?\s*Resources|Learning\s+Assessment|$)'
+    # Map Roman numeral unit numbers to int
+    _ROMAN = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
+              'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10}
+    _UNIT_NUM = r'(?:(\d+)|(I{1,3}V?|VI{0,3}|IX|IV|VIII|VII|VI|V|IV|III|II|I))'
 
-    # Title-less pattern (match FIRST): "Unit-1 - 9 Hour"  (no title, just hours)
+    # Boundary pattern shared by both primary and fallback regexes
+    _UNIT_END = r'(?=Unit[-\s]*(?:\d+|I{1,3}V?|VI{0,3}|IX)\s*[-–:]|Learning\s*\n?\s*Resources|Learning\s+Assessment|$)'
+
+    # Title-less pattern (match FIRST): "Unit-1 - 9 Hour" or "Unit-I - 9 Hour"
     pattern_notitle = re.compile(
-        r'Unit[-\s]*(\d)\s*[-–:]\s*(\d+)\s*Hours?\b(.*?)'
+        r'Unit[-\s]*' + _UNIT_NUM + r'\s*[-–:]\s*(\d+)\s*Hours?\b(.*?)'
         + _UNIT_END,
         re.DOTALL | re.IGNORECASE
     )
-    # Titled pattern: "Unit-1 - Title  12 Hour(s)"  (title present)
+    # Titled pattern: "Unit-1 - Title  12 Hour(s)" or "Unit-I: Title  9 hours"
     pattern_titled = re.compile(
-        r'Unit[-\s]*(\d)\s*[-–:]\s*(.+?)\s+(\d+)\s*Hours?\b(.*?)'
+        r'Unit[-\s]*' + _UNIT_NUM + r'\s*[-–:]\s*(.+?)\s+(\d+)\s*Hours?\b(.*?)'
         + _UNIT_END,
         re.DOTALL | re.IGNORECASE
     )
     units = []
     matched = set()
 
+    def _unit_num(arabic, roman):
+        if arabic:
+            return int(arabic)
+        return _ROMAN.get(roman.upper(), 0)
+
+
     # Pass 1: match title-less units first ("Unit-1 - 9 Hour\ncontent...")
     for m in pattern_notitle.finditer(text):
-        n = int(m.group(1))
-        hours_str, content = m.group(2), m.group(3)
-        if n not in matched:
-            # Derive a title from the first line of content
-            content_text = content.strip()
-            lines = content_text.split('\n') if content_text else []
-            first_line = lines[0].strip() if lines else ''
-            # Use first line as title if it's a short standalone line
-            if first_line and len(first_line) < 80 and not re.match(r'^\d', first_line):
-                title = first_line
-                content_text = '\n'.join(lines[1:]).strip()
-            elif first_line:
-                # Try to extract topic name from the start of content
-                # Split on common delimiters: - : ; ,
-                topic = re.split(r'\s*[-:;,]\s*', first_line)[0].strip()
-                # Clean trailing em-dash variants
-                topic = topic.rstrip('\u2014\u2013-').strip()
-                if topic and len(topic) > 3 and len(topic) < 80:
-                    title = topic
-                else:
-                    title = f"Unit {n}"
-            else:
-                title = f"Unit {n}"
-            units.append({
-                "number": n,
-                "title":  title,
-                "hours":  int(hours_str),
-                "content": _clean_unit_content(content_text)
-            })
-            matched.add(n)
+        arabic, roman, hours_str, content = m.group(1), m.group(2), m.group(3), m.group(4)
+        n = _unit_num(arabic, roman)
+        if not n or n in matched:
+            continue
+        content_text = content.strip()
+        lines = content_text.split('\n') if content_text else []
+        first_line = lines[0].strip() if lines else ''
+        if first_line and len(first_line) < 80 and not re.match(r'^\d', first_line):
+            title = first_line
+            content_text = '\n'.join(lines[1:]).strip()
+        elif first_line:
+            topic = re.split(r'\s*[-:;,]\s*', first_line)[0].strip()
+            topic = topic.rstrip('\u2014\u2013-').strip()
+            title = topic if (topic and 3 < len(topic) < 80) else f"Unit {n}"
+        else:
+            title = f"Unit {n}"
+        units.append({"number": n, "title": title, "hours": int(hours_str),
+                      "content": _clean_unit_content(content_text)})
+        matched.add(n)
 
     # Pass 2: match titled units ("Unit-1 - Some Title 12 Hour\ncontent...")
     for m in pattern_titled.finditer(text):
-        num, title, hours, content = m.groups()
-        n = int(num)
-        if n not in matched:
-            title = title.strip()
-            # If title contains newlines, the part after the first newline is content
-            if '\n' in title:
-                parts = title.split('\n', 1)
-                title = parts[0].strip()
-                content = parts[1].strip() + '\n' + content
-            # If after cleanup the "title" is just a number (orphan hours
-            # grabbed by the regex), derive from content
-            if re.match(r'^\d+$', title):
-                first_line = content.strip().split('\n')[0].strip() if content.strip() else ''
-                if first_line and len(first_line) < 100 and not re.match(r'^\d', first_line):
-                    title = first_line
-                    content = '\n'.join(content.strip().split('\n')[1:]).strip()
-                else:
-                    title = f"Unit {n}"
-            units.append({
-                "number": n,
-                "title":  title,
-                "hours":  int(hours),
-                "content": _clean_unit_content(content.strip())
-            })
-            matched.add(n)
+        arabic, roman, title, hours, content = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+        n = _unit_num(arabic, roman)
+        if not n or n in matched:
+            continue
+        title = title.strip()
+        if '\n' in title:
+            parts = title.split('\n', 1)
+            title = parts[0].strip()
+            content = parts[1].strip() + '\n' + content
+        if re.match(r'^\d+$', title):
+            first_line = content.strip().split('\n')[0].strip() if content.strip() else ''
+            if first_line and len(first_line) < 100 and not re.match(r'^\d', first_line):
+                title = first_line
+                content = '\n'.join(content.strip().split('\n')[1:]).strip()
+            else:
+                title = f"Unit {n}"
+        units.append({"number": n, "title": title, "hours": int(hours),
+                      "content": _clean_unit_content(content.strip())})
+        matched.add(n)
 
     units.sort(key=lambda u: u["number"])
     return units
@@ -775,8 +810,16 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--pdf",
-        default=DEFAULT_PDF,
-        help=f"PDF filename (relative to project root). Default: {DEFAULT_PDF}",
+        default=None,
+        help="PDF filename (relative to project root or syllabi/ dir). "
+             f"Default: {DEFAULT_PDF}",
+    )
+    ap.add_argument(
+        "--pdf-dir",
+        default=None,
+        metavar="DIR",
+        help="Parse ALL *.pdf files in this directory (relative to project root). "
+             "Uses --skip-existing automatically.",
     )
     ap.add_argument(
         "--skip-existing",
@@ -789,5 +832,29 @@ if __name__ == "__main__":
         help="Print sample extraction and exit without writing to DB.",
     )
     args = ap.parse_args()
-    pdf_path = ROOT / args.pdf
-    run(pdf_path=pdf_path, skip_existing=args.skip_existing, debug=args.debug)
+
+    if args.pdf_dir:
+        # Batch mode: parse every PDF in the given directory
+        pdf_dir = ROOT / args.pdf_dir
+        if not pdf_dir.is_dir():
+            sys.exit(f"Directory not found: {pdf_dir}")
+        pdfs = sorted(pdf_dir.glob("*.pdf"))
+        if not pdfs:
+            sys.exit(f"No PDFs found in {pdf_dir}")
+        print(f"Batch mode: {len(pdfs)} PDFs in {pdf_dir}")
+        for pdf_path in pdfs:
+            print(f"\n{'='*60}")
+            run(pdf_path=pdf_path, skip_existing=True, debug=args.debug)
+        print(f"\nBatch complete. {len(pdfs)} PDFs processed.")
+    else:
+        # Single-file mode
+        if args.pdf is None:
+            # Default: check syllabi/ dir first, then root
+            default_path = SYLLABI_DIR / DEFAULT_PDF
+            if not default_path.exists():
+                default_path = ROOT / DEFAULT_PDF
+        else:
+            # Search syllabi/ first, then root
+            candidate = SYLLABI_DIR / args.pdf
+            default_path = candidate if candidate.exists() else ROOT / args.pdf
+        run(pdf_path=default_path, skip_existing=args.skip_existing, debug=args.debug)

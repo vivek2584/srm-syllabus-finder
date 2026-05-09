@@ -1,0 +1,3 @@
+# This file exists so git tracks the syllabi/ directory.
+# The actual PDF files are stored in GitHub Releases (too large for git).
+# See: https://github.com/vivek2584/srm-syllabus-finder/releases

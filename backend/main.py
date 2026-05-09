@@ -33,12 +33,36 @@ DB_PATH      = ROOT / "data" / "syllabi.db"
 CHROMA_DIR   = ROOT / "data" / "chroma"
 FRONTEND_DIR = ROOT / "frontend"
 
-# Registry of all known syllabus PDFs (filename → full path).
-# Add new PDFs here when they are ingested.
-_KNOWN_PDFS = {
-    "computing-programmes-syllabus-2021.pdf": ROOT / "computing-programmes-syllabus-2021.pdf",
-    "csbs-syllabus-2021.pdf":                 ROOT / "csbs-syllabus-2021.pdf",
-}
+SYLLABI_DIR  = ROOT / "syllabi"          # folder for department syllabus PDFs
+
+
+def _discover_pdfs() -> dict[str, Path]:
+    """Auto-discover all *.pdf files in syllabi/ and the project root.
+
+    Returns a dict of {filename: absolute_path} for every PDF found.
+    syllabi/ takes precedence; root-level PDFs are also included for
+    backward compatibility.
+    """
+    found: dict[str, Path] = {}
+    # 1. PDFs in syllabi/ subfolder
+    if SYLLABI_DIR.is_dir():
+        for p in sorted(SYLLABI_DIR.glob("*.pdf")):
+            found[p.name] = p
+    # 2. PDFs in project root (legacy / computing + csbs)
+    for p in sorted(ROOT.glob("*.pdf")):
+        if p.name not in found:       # don't shadow syllabi/ copies
+            found[p.name] = p
+    return found
+
+
+# Build at startup — refreshes automatically on each process start
+_KNOWN_PDFS: dict[str, Path] = _discover_pdfs()
+
+logger = logging.getLogger(__name__)
+if _KNOWN_PDFS:
+    logger.info("PDFs discovered: %s", list(_KNOWN_PDFS))
+else:
+    logger.warning("No PDFs found in syllabi/ or project root — PDF download endpoints will fail.")
 
 # Default PDF (used when source_pdf column is empty/missing)
 _DEFAULT_PDF = "computing-programmes-syllabus-2021.pdf"
