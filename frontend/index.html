@@ -360,7 +360,6 @@
         line-height: 1.5;
       }
 
-      /* ── Responsive ──────────────────────────────────────────── */
       @media (max-width: 480px) {
         header {
           padding: 12px 16px;
@@ -373,12 +372,51 @@
           padding: 8px 12px;
         }
       }
+
+      /* ── Segmented Control (Toggle) ──────────────────────────── */
+      .segmented-control {
+        display: flex;
+        background: var(--bg);
+        padding: 4px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+      .segmented-control input[type="radio"] {
+        display: none;
+      }
+      .segmented-control label {
+        padding: 4px 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        color: var(--text-secondary);
+        transition: all 0.2s ease;
+        border-radius: 6px;
+      }
+      .segmented-control input[type="radio"]:checked + label {
+        color: var(--text);
+        background: var(--surface);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      @media (prefers-color-scheme: dark) {
+        .segmented-control input[type="radio"]:checked + label {
+          box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+      }
     </style>
   </head>
   <body>
     <header>
       <h1>SRM Syllabus Finder</h1>
-      <span class="meta" id="stats-badge"></span>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <div class="segmented-control">
+          <input type="radio" name="reg" id="reg-2021" value="2021" checked onchange="changeRegulation()">
+          <label for="reg-2021">2021</label>
+          <input type="radio" name="reg" id="reg-2026" value="2026" onchange="changeRegulation()">
+          <label for="reg-2026">2026</label>
+        </div>
+        <span class="meta" id="stats-badge"></span>
+      </div>
     </header>
 
     <div id="chat"></div>
@@ -409,21 +447,31 @@
         sugItems = [],
         sugTimer = null;
       let lastQueryContext = "Syllabus";
+      let currentRegulation = "2021";
 
       /* ── Init ─────────────────────────────────────────────── */
       window.addEventListener("DOMContentLoaded", () => {
+        resetChat();
+        input.focus();
+      });
+
+      function resetChat() {
         chat.innerHTML = `
           <div class="welcome">
             <h2>Ask anything about your syllabus</h2>
             <p>Search by course code, ask about prerequisites, compare courses, or explore topics.</p>
           </div>`;
         loadStats();
-        input.focus();
-      });
+      }
+
+      function changeRegulation() {
+        currentRegulation = document.querySelector('input[name="reg"]:checked').value;
+        resetChat();
+      }
 
       async function loadStats() {
         try {
-          const r = await fetch("/api/stats");
+          const r = await fetch("/api/stats?regulation=" + currentRegulation);
           if (!r.ok) return;
           const d = await r.json();
           document.getElementById("stats-badge").textContent =
@@ -432,7 +480,7 @@
       }
 
       function isDirectSearch(q) {
-        return /^\s*21[A-Z]{2,5}\d{3}[A-Z]?\s*$/i.test(q);
+        return /^\s*(?:21|26)[A-Z]{2,5}\d{3,4}[A-Z]?\s*$/i.test(q);
       }
 
       function clearWelcome() {
@@ -461,7 +509,7 @@
         {
           const tid = appendTyping();
           try {
-            const r = await fetch("/api/search?q=" + encodeURIComponent(q));
+            const r = await fetch("/api/search?q=" + encodeURIComponent(q) + "&regulation=" + currentRegulation);
             const data = r.ok ? await r.json() : null;
 
             if (data && data.type === "course") {
@@ -514,7 +562,7 @@
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question: q }),
+            body: JSON.stringify({ question: q, regulation: currentRegulation }),
           });
           if (!res.ok) {
             const err = await res.json();
@@ -661,7 +709,7 @@
           } else {
             const codeMatch = el
               .querySelector(".content")
-              .textContent.match(/\b21[A-Z]{2,5}\d{3}[A-Z]?\b/i);
+              .textContent.match(/\b(?:21|26)[A-Z]{2,5}\d{3,4}[A-Z]?\b/i);
             if (codeMatch) codeToFetch = codeMatch[0];
           }
 
@@ -674,7 +722,7 @@
 
           // Fetch the PDF as a blob so we control the filename
           const response = await fetch(
-            `/api/pdf/${encodeURIComponent(codeToFetch)}`,
+            `/api/pdf/${encodeURIComponent(codeToFetch)}?regulation=${currentRegulation}`,
           );
           if (!response.ok) {
             const err = await response.json().catch(() => ({}));
@@ -760,7 +808,7 @@
           return;
         }
         try {
-          const r = await fetch("/api/suggest?q=" + encodeURIComponent(q));
+          const r = await fetch("/api/suggest?q=" + encodeURIComponent(q) + "&regulation=" + currentRegulation);
           const d = await r.json();
           sugItems = d.suggestions || [];
           renderSuggestions();

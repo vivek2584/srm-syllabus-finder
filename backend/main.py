@@ -147,6 +147,7 @@ def _ensure_schema(conn: sqlite3.Connection):
         ("start_page", "ALTER TABLE courses ADD COLUMN start_page INTEGER DEFAULT 0"),
         ("end_page",   "ALTER TABLE courses ADD COLUMN end_page INTEGER DEFAULT 0"),
         ("source_pdf", "ALTER TABLE courses ADD COLUMN source_pdf TEXT DEFAULT ''"),
+        ("regulation", "ALTER TABLE courses ADD COLUMN regulation TEXT DEFAULT '2021'"),
     ]:
         if col_name not in cols:
             conn.execute(col_def)
@@ -283,7 +284,7 @@ def format_markdown(row) -> str:
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 @app.get("/api/search")
-def search(q: str = Query(..., min_length=1)):
+def search(q: str = Query(..., min_length=1), regulation: str = "2021"):
     conn = get_conn()
     try:
         q_up = q.strip().upper()
@@ -292,7 +293,7 @@ def search(q: str = Query(..., min_length=1)):
         code_m = RE_CODE.search(q_up)
         if code_m:
             row = conn.execute(
-                "SELECT * FROM courses WHERE UPPER(code) = ?", (code_m.group(1),)
+                "SELECT * FROM courses WHERE UPPER(code) = ? AND regulation = ?", (code_m.group(1), regulation)
             ).fetchone()
             if row:
                 return {
@@ -304,7 +305,9 @@ def search(q: str = Query(..., min_length=1)):
         # 2) Name contains all words in the query
         words  = q_up.split()
         clause = " AND ".join(["UPPER(name) LIKE ?"] * len(words))
+        clause += " AND regulation = ?"
         params = [f"%{w}%" for w in words]
+        params.append(regulation)
         rows   = conn.execute(
             f"SELECT * FROM courses WHERE {clause} LIMIT 8", params
         ).fetchall()
@@ -325,7 +328,7 @@ def search(q: str = Query(..., min_length=1)):
 
         # 3) Partial code match
         rows = conn.execute(
-            "SELECT * FROM courses WHERE UPPER(code) LIKE ? LIMIT 8", (f"%{q_up}%",)
+            "SELECT * FROM courses WHERE UPPER(code) LIKE ? AND regulation = ? LIMIT 8", (f"%{q_up}%", regulation)
         ).fetchall()
         if rows:
             if len(rows) == 1:
@@ -354,11 +357,11 @@ def search(q: str = Query(..., min_length=1)):
 
 
 @app.get("/api/course/{code}")
-def get_course(code: str):
+def get_course(code: str, regulation: str = "2021"):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM courses WHERE UPPER(code) = ?", (code.upper(),)
+            "SELECT * FROM courses WHERE UPPER(code) = ? AND regulation = ?", (code.upper(), regulation)
         ).fetchone()
         if not row:
             raise HTTPException(404, f"Course {code} not found")
@@ -372,12 +375,12 @@ def get_course(code: str):
 
 
 @app.get("/api/pdf/{code}")
-def get_pdf(code: str):
+def get_pdf(code: str, regulation: str = "2021"):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT start_page, end_page, source_pdf FROM courses WHERE UPPER(code) = ?",
-            (code.upper(),)
+            "SELECT start_page, end_page, source_pdf FROM courses WHERE UPPER(code) = ? AND regulation = ?",
+            (code.upper(), regulation)
         ).fetchone()
 
         if not row:
@@ -419,18 +422,18 @@ def get_pdf(code: str):
 
 
 @app.get("/api/suggest")
-def suggest(q: str = Query(..., min_length=2)):
+def suggest(q: str = Query(..., min_length=2), regulation: str = "2021"):
     conn = get_conn()
     try:
         q_up = q.upper()
         rows = conn.execute(
             """SELECT code, name, category FROM courses
-               WHERE UPPER(code) LIKE ? OR UPPER(name) LIKE ?
+               WHERE (UPPER(code) LIKE ? OR UPPER(name) LIKE ?) AND regulation = ?
                ORDER BY
                  CASE WHEN UPPER(code) LIKE ? THEN 0 ELSE 1 END,
                  code
                LIMIT 10""",
-            (f"{q_up}%", f"%{q_up}%", f"{q_up}%"),
+            (f"{q_up}%", f"%{q_up}%", regulation, f"{q_up}%"),
         ).fetchall()
         return {"suggestions": [{"code": r["code"], "name": r["name"], "category": r["category"]} for r in rows]}
     finally:
@@ -438,15 +441,15 @@ def suggest(q: str = Query(..., min_length=2)):
 
 
 @app.get("/api/stats")
-def stats():
+def stats(regulation: str = "2021"):
     conn = get_conn()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+        total = conn.execute("SELECT COUNT(*) FROM courses WHERE regulation = ?", (regulation,)).fetchone()[0]
         cats  = conn.execute(
-            "SELECT category, COUNT(*) AS n FROM courses GROUP BY category ORDER BY n DESC"
+            "SELECT category, COUNT(*) AS n FROM courses WHERE regulation = ? GROUP BY category ORDER BY n DESC", (regulation,)
         ).fetchall()
         depts = conn.execute(
-            "SELECT department, COUNT(*) AS n FROM courses GROUP BY department ORDER BY n DESC LIMIT 10"
+            "SELECT department, COUNT(*) AS n FROM courses WHERE regulation = ? GROUP BY department ORDER BY n DESC LIMIT 10", (regulation,)
         ).fetchall()
         return {
             "total_courses":  total,
@@ -600,6 +603,7 @@ def handle_aggregate_query(query_info: dict, conn) -> str:
 async def chat_endpoint(request: Request):
     body = await request.json()
     question = body.get("question", "").strip()
+    regulation = body.get("regulation", "2021").strip()
     if not question:
         raise HTTPException(400, "No question provided")
 
@@ -638,9 +642,9 @@ async def chat_endpoint(request: Request):
         # Each course has ~7 chunks (overview + 5 units + resources), scale accordingly
         n = max(12, len(mentioned_codes) * 8)
         if len(mentioned_codes) == 1:
-            where_filter = {"code": mentioned_codes[0]}
+            where_filter = {"$and": [{"code": mentioned_codes[0]}, {"regulation": regulation}]}
         else:
-            where_filter = {"code": {"$in": mentioned_codes}}
+            where_filter = {"$and": [{"code": {"$in": mentioned_codes}}, {"regulation": regulation}]}
 
         results = collection.query(
             query_texts=[question],
@@ -652,6 +656,7 @@ async def chat_endpoint(request: Request):
         results = collection.query(
             query_texts=[question],
             n_results=8,
+            where={"regulation": regulation}
         )
 
     context_chunks = results["documents"][0] if results["documents"] else []

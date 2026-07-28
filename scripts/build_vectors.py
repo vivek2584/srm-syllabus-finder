@@ -49,6 +49,7 @@ def chunk_course(course: dict) -> list[tuple[str, dict]]:
         "name": name,
         "category": course.get("category", ""),
         "credits": course.get("c", 0),
+        "regulation": course.get("regulation", "2021"),
     }
 
     chunks = []
@@ -107,7 +108,7 @@ def main():
     for course in courses:
         chunks = chunk_course(course)
         for i, (text, meta) in enumerate(chunks):
-            doc_id = f"{course['code']}_{i}"
+            doc_id = f"{course.get('regulation', '2021')}_{course['code']}_{i}"
             all_docs.append(text)
             all_metas.append(meta)
             all_ids.append(doc_id)
