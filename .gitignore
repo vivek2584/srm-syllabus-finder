@@ -1,6 +1,6 @@
 # Source PDFs (too large for git — hosted via GitHub Releases)
-# All PDFs live in syllabi/ — never commit them directly
-syllabi/*.pdf
+# All PDFs live in syllabi/ — never commit them directly unless using Git LFS
+# syllabi/*.pdf
 
 # Python
 __pycache__/
