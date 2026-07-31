@@ -49,14 +49,14 @@ def extract_courses(pdf_path: Path):
         # Detect start of course
         if re.search(r'Code\s+(26[A-Z0-9]+)\s+Title', text, re.IGNORECASE):
             if current_course:
-                courses_text.append((starts[-1], i-1, "\n".join(current_course)))
+                courses_text.append((starts[-1], i, "\n".join(current_course)))
             current_course = [text]
             starts.append(i)
         elif current_course:
             current_course.append(text)
             
     if current_course:
-        courses_text.append((starts[-1], len(pages)-1, "\n".join(current_course)))
+        courses_text.append((starts[-1], len(pages), "\n".join(current_course)))
         
     return courses_text
 

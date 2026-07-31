@@ -141,6 +141,9 @@
         margin-bottom: 8px;
         padding-bottom: 6px;
         border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
       .bubble .content h3 {
         font-size: 0.85rem;
@@ -460,6 +463,14 @@
           <div class="welcome">
             <h2>Ask anything about your syllabus</h2>
             <p>Search by course code, ask about prerequisites, compare courses, or explore topics.</p>
+            <div style="margin-top: 20px; padding: 10px 16px; background: var(--bot-bg); border-radius: 12px; border: 1px solid var(--border); font-size: 0.85rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span><strong>Tip:</strong> Use the toggle at the top right to switch between <strong style="color: var(--text);">2021</strong> and <strong style="color: var(--text);">2026</strong> syllabi.</span>
+            </div>
           </div>`;
         loadStats();
       }
@@ -638,14 +649,21 @@
       function appendBotMsg(md, err = false, done = false, showPdf = false) {
         const id = ++mid;
         let html = `<div class="content">${marked.parse(md)}</div>`;
-        if (done && !err && showPdf) {
-          html += getPdfButtonHtml(id);
-        }
         chat.insertAdjacentHTML(
           "beforeend",
           `<div class="msg bot" id="m${id}" data-query="${esc(lastQueryContext)}"><div class="bubble${err ? " error-bubble" : ""}">${html}</div></div>`,
         );
-        scroll();
+        const el = document.getElementById("m" + id);
+        if (done && !err && showPdf) {
+          const h2 = el.querySelector("h2");
+          if (h2) {
+             h2.insertAdjacentHTML('beforeend', getPdfButtonHtml(id, true));
+          } else {
+             el.querySelector(".bubble").insertAdjacentHTML('beforeend', getPdfButtonHtml(id, false));
+          }
+        }
+        if (done) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else scroll();
         return id;
       }
 
@@ -671,16 +689,22 @@
         const b = el.querySelector(".bubble");
         b.className = "bubble" + (err ? " error-bubble" : "");
         let html = `<div class="content">${marked.parse(md)}</div>`;
-        if (done && !err && showPdf) {
-          html += getPdfButtonHtml(id);
-        }
         b.innerHTML = html;
-        scroll();
+        if (done && !err && showPdf) {
+          const h2 = b.querySelector('h2');
+          if (h2) {
+             h2.insertAdjacentHTML('beforeend', getPdfButtonHtml(id, true));
+          } else {
+             b.insertAdjacentHTML('beforeend', getPdfButtonHtml(id, false));
+          }
+        }
+        if (done) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else scroll();
       }
 
-      function getPdfButtonHtml(msgId) {
+      function getPdfButtonHtml(msgId, isHeader = false) {
         return `
-          <button class="pdf-btn" onclick="downloadPDF('m${msgId}')">
+          <button class="pdf-btn" ${isHeader ? 'style="margin-top: 0;"' : ''} onclick="downloadPDF('m${msgId}')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
