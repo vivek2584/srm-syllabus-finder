@@ -184,18 +184,18 @@
         gap: 6px;
         margin-top: 12px;
         padding: 6px 12px;
-        background: var(--bg);
-        border: 1px solid var(--border);
+        background: var(--accent);
+        border: 1px solid var(--accent);
         border-radius: 8px;
         font-size: 0.8rem;
         font-weight: 500;
-        color: var(--text);
+        color: #ffffff;
         cursor: pointer;
         transition: all 0.15s;
         font-family: var(--font);
       }
       .pdf-btn:hover {
-        background: var(--border);
+        opacity: 0.9;
       }
       .pdf-btn svg {
         width: 14px;
@@ -397,12 +397,13 @@
         border-radius: 6px;
       }
       .segmented-control input[type="radio"]:checked + label {
-        color: var(--text);
-        background: var(--surface);
+        color: #ffffff;
+        background: var(--accent);
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
       @media (prefers-color-scheme: dark) {
         .segmented-control input[type="radio"]:checked + label {
+          color: #000000;
           box-shadow: 0 1px 3px rgba(0,0,0,0.4);
         }
       }
