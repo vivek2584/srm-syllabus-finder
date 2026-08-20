@@ -413,7 +413,8 @@ def get_pdf(code: str, regulation: str = "2021"):
 
         filename = f"{code.upper()}_Syllabus.pdf"
         headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"'
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
         }
 
         return Response(content=output_stream.read(), media_type="application/pdf", headers=headers)
