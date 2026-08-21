@@ -1,4 +1,6 @@
-<!doctype html>
+import pathlib
+
+html = r"""<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -32,7 +34,7 @@
       .bubble{padding:10px 16px;border-radius:18px;max-width:min(680px,85%);line-height:1.6;font-size:.9rem;word-break:break-word}
       .msg.user .bubble{background:var(--user-bg);color:var(--user-fg);border-bottom-right-radius:4px}
       .msg.bot .bubble{background:var(--bot-bg);color:var(--bot-fg);border-bottom-left-radius:4px}
-      .msg.bot.pdf-msg .bubble{max-width:min(760px,96%);padding:0;background:transparent}
+      .msg.bot.pdf-msg .bubble{max-width:min(900px,98%);padding:0;background:transparent}
       .pdf-preview-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.06);width:100%}
       .pdf-preview-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bot-bg);gap:12px;flex-wrap:wrap}
       .pdf-preview-header-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
@@ -42,16 +44,16 @@
       .pdf-action-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;font-size:.78rem;font-weight:500;font-family:var(--font);cursor:pointer;text-decoration:none;transition:all .15s;border:1px solid var(--border);background:transparent;color:var(--text-secondary)}
       .pdf-action-btn:hover{background:var(--bg);color:var(--text)}
       .pdf-action-btn svg{width:13px;height:13px;flex-shrink:0}
-      .pdf-viewer-wrap{position:relative;width:100%;height:65dvh;min-height:480px;background:#525659;transition:height .25s ease}
+      .pdf-viewer-wrap{position:relative;width:100%;height:640px;background:#525659;transition:height .25s ease}
       .pdf-viewer-wrap.markdown-mode{height:auto;background:var(--surface)}
       .pdf-viewer-wrap iframe{width:100%;height:100%;border:none;display:block}
       .pdf-loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#525659;color:#d4d4d4;font-size:.82rem;pointer-events:none;transition:opacity .3s;z-index:2}
       .pdf-loader.hidden{opacity:0}
       .pdf-spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
       @keyframes spin{to{transform:rotate(360deg)}}
-      .pdf-error-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:200px;color:var(--text-secondary);font-size:.84rem;padding:24px;text-align:center;background:var(--bot-bg)}
+      .pdf-error-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:260px;color:var(--text-secondary);font-size:.84rem;padding:24px;text-align:center;background:var(--bot-bg)}
       .pdf-error-state svg{width:32px;height:32px;opacity:.4}
-      .pdf-markdown-body{padding:20px 24px;max-height:60dvh;overflow-y:auto}
+      .pdf-markdown-body{padding:20px 24px;max-height:640px;overflow-y:auto}
       .pdf-markdown-notice{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);font-size:.75rem;color:var(--text-secondary)}
       .pdf-footer{padding:10px 14px 12px;border-top:1px solid var(--border);background:var(--bot-bg);font-size:.75rem;color:var(--text-secondary)}
       /* Markdown styles inside bubbles and PDF card */
@@ -90,9 +92,9 @@
         header{padding:12px 16px}
         #chat{padding:16px 10px}
         .bubble{max-width:92%;padding:8px 12px}
-        .pdf-viewer-wrap{height:55dvh;min-height:300px}
+        .pdf-viewer-wrap{height:480px}
         .pdf-viewer-wrap.markdown-mode{height:auto}
-        .pdf-markdown-body{max-height:420px}
+        .pdf-markdown-body{max-height:500px}
       }
       .segmented-control{display:flex;background:var(--bg);padding:4px;border-radius:8px;border:1px solid var(--border)}
       .segmented-control input[type=radio]{display:none}
@@ -104,7 +106,7 @@
       #pdf-modal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);animation:fadeIn .18s ease}
       #pdf-modal.open{display:flex;flex-direction:column}
       @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-      #pdf-modal-inner{display:flex;flex-direction:column;width:min(1200px,98vw);max-height:96dvh;margin:auto;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);animation:slideUp .2s ease}
+      #pdf-modal-inner{display:flex;flex-direction:column;width:min(960px,96vw);max-height:92dvh;margin:auto;background:var(--surface);border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);animation:slideUp .2s ease}
       @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
       #pdf-modal-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bot-bg);gap:12px;flex-shrink:0}
       #pdf-modal-title{display:flex;align-items:center;gap:10px;min-width:0;flex:1;font-size:.9rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -592,4 +594,9 @@
       document.addEventListener('click', (e) => { if (!e.target.closest('#inputwrap')) hideSuggestions(); });
     </script>
   </body>
-</html>
+</html>"""
+
+p = pathlib.Path('frontend/index.html')
+p.write_text(html, encoding='utf-8')
+lines = html.count('\n')
+print(f'OK: wrote {len(html)} bytes, {lines} lines to {p}')
