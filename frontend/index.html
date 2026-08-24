@@ -359,14 +359,7 @@
         chat.appendChild(card);
         card.scrollIntoView({behavior: 'smooth', block: 'start'});
 
-        // On mobile, skip the PDF iframe entirely — show markdown directly
-        if (isMobile) {
-          _cardData[id].hasPdf = false;
-          showMarkdownContent(id, markdownFallback);
-          return;
-        }
-
-        // Desktop: probe the PDF endpoint
+        // Probe the PDF endpoint on all devices (mobile and desktop)
         try {
           const probe = await fetch(pdfUrl);
           const ct = probe.headers.get('Content-Type') || '';
@@ -387,7 +380,12 @@
                 const lo = document.getElementById('pdf-loader-' + id);
                 if (lo) lo.classList.add('hidden');
               };
-              iframe.src = pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
+              // On mobile, link to the PDF directly so the browser opens its native PDF viewer
+              if (isMobile) {
+                iframe.src = pdfUrl;
+              } else {
+                iframe.src = pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
+              }
               wrap.appendChild(iframe);
             }
           }
@@ -459,12 +457,12 @@
 
         body.innerHTML = '';
 
-        if (data.hasPdf && !isMobile) {
-          // Show PDF in full-screen iframe
+        if (data.hasPdf) {
+          // Show PDF in full-screen iframe (works on all modern browsers including mobile)
           const iframe = document.createElement('iframe');
           iframe.style.cssText = 'width:100%;height:100%;border:none;flex:1;min-height:70dvh';
           iframe.title = 'Syllabus ' + data.code;
-          iframe.src = data.pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
+          iframe.src = isMobile ? data.pdfUrl : data.pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
           body.appendChild(iframe);
         } else {
           // Show markdown
