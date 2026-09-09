@@ -7,6 +7,12 @@ html = r"""<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SRM Syllabus Finder</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    </script>
     <style>
       *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
       :root{
@@ -44,11 +50,13 @@ html = r"""<!doctype html>
       .pdf-action-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;font-size:.78rem;font-weight:500;font-family:var(--font);cursor:pointer;text-decoration:none;transition:all .15s;border:1px solid var(--border);background:transparent;color:var(--text-secondary)}
       .pdf-action-btn:hover{background:var(--bg);color:var(--text)}
       .pdf-action-btn svg{width:13px;height:13px;flex-shrink:0}
-      .pdf-viewer-wrap{position:relative;width:100%;height:640px;background:#525659;transition:height .25s ease}
+      .pdf-viewer-wrap{position:relative;width:100%;height:640px;background:#525659;transition:height .25s ease;overflow:hidden}
       .pdf-viewer-wrap.markdown-mode{height:auto;background:var(--surface)}
       .pdf-viewer-wrap iframe{width:100%;height:100%;border:none;display:block}
+      .pdf-canvas-container{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px 8px;background:#525659;-webkit-overflow-scrolling:touch}
+      .pdf-canvas-container canvas{box-shadow:0 4px 14px rgba(0,0,0,.35);border-radius:4px;max-width:100%;height:auto!important;background:#fff}
       .pdf-loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#525659;color:#d4d4d4;font-size:.82rem;pointer-events:none;transition:opacity .3s;z-index:2}
-      .pdf-loader.hidden{opacity:0}
+      .pdf-loader.hidden{opacity:0;display:none!important}
       .pdf-spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
       @keyframes spin{to{transform:rotate(360deg)}}
       .pdf-error-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:260px;color:var(--text-secondary);font-size:.84rem;padding:24px;text-align:center;background:var(--bot-bg)}
@@ -92,9 +100,9 @@ html = r"""<!doctype html>
         header{padding:12px 16px}
         #chat{padding:16px 10px}
         .bubble{max-width:92%;padding:8px 12px}
-        .pdf-viewer-wrap{height:480px}
+        .pdf-viewer-wrap{height:55dvh;min-height:320px}
         .pdf-viewer-wrap.markdown-mode{height:auto}
-        .pdf-markdown-body{max-height:500px}
+        .pdf-markdown-body{max-height:420px}
       }
       .segmented-control{display:flex;background:var(--bg);padding:4px;border-radius:8px;border:1px solid var(--border)}
       .segmented-control input[type=radio]{display:none}
@@ -106,7 +114,7 @@ html = r"""<!doctype html>
       #pdf-modal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);animation:fadeIn .18s ease}
       #pdf-modal.open{display:flex;flex-direction:column}
       @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-      #pdf-modal-inner{display:flex;flex-direction:column;width:min(960px,96vw);max-height:92dvh;margin:auto;background:var(--surface);border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);animation:slideUp .2s ease}
+      #pdf-modal-inner{display:flex;flex-direction:column;width:min(1200px,98vw);max-height:96dvh;margin:auto;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);animation:slideUp .2s ease}
       @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
       #pdf-modal-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bot-bg);gap:12px;flex-shrink:0}
       #pdf-modal-title{display:flex;align-items:center;gap:10px;min-width:0;flex:1;font-size:.9rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -161,7 +169,6 @@ html = r"""<!doctype html>
       let currentRegulation = '2021';
       let mid = 0;
 
-      // Mobile detection — iOS/Android can't render PDFs inline in iframes
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window && navigator.maxTouchPoints > 1);
 
       window.addEventListener('DOMContentLoaded', () => { resetChat(); input.focus(); });
@@ -277,6 +284,58 @@ html = r"""<!doctype html>
         }
       }
 
+      /* ── PDF.js HTML5 Canvas Renderer ────────────────────────── */
+      async function renderPdfWithPdfJs(pdfUrl, wrapEl, loaderEl) {
+        try {
+          if (!window.pdfjsLib) return false;
+          const loadingTask = pdfjsLib.getDocument(pdfUrl);
+          const pdfDoc = await loadingTask.promise;
+
+          const container = document.createElement('div');
+          container.className = 'pdf-canvas-container';
+
+          const wrapWidth = wrapEl.clientWidth || (window.innerWidth < 480 ? window.innerWidth - 32 : 680);
+          const targetWidth = Math.max(280, wrapWidth - 24);
+          const dpr = window.devicePixelRatio || 1;
+
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const unscaledViewport = page.getViewport({ scale: 1.0 });
+            const scale = targetWidth / unscaledViewport.width;
+            const viewport = page.getViewport({ scale: scale });
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+
+            canvas.width = Math.floor(viewport.width * dpr);
+            canvas.height = Math.floor(viewport.height * dpr);
+            canvas.style.width = Math.floor(viewport.width) + 'px';
+            canvas.style.height = Math.floor(viewport.height) + 'px';
+
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+              transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
+            };
+
+            await page.render(renderContext).promise;
+            container.appendChild(canvas);
+
+            if (pageNum === 1 && loaderEl) {
+              loaderEl.classList.add('hidden');
+            }
+          }
+
+          wrapEl.appendChild(container);
+          if (loaderEl) loaderEl.classList.add('hidden');
+          return true;
+        } catch (err) {
+          console.error('PDF.js render error:', err);
+          if (loaderEl) loaderEl.classList.add('hidden');
+          return false;
+        }
+      }
+
       /* ── PDF Preview Card ─────────────────────────────────────── */
 
       // Store per-card data for the modal
@@ -361,14 +420,7 @@ html = r"""<!doctype html>
         chat.appendChild(card);
         card.scrollIntoView({behavior: 'smooth', block: 'start'});
 
-        // On mobile, skip the PDF iframe entirely — show markdown directly
-        if (isMobile) {
-          _cardData[id].hasPdf = false;
-          showMarkdownContent(id, markdownFallback);
-          return;
-        }
-
-        // Desktop: probe the PDF endpoint
+        // Probe PDF endpoint and render using PDF.js
         try {
           const probe = await fetch(pdfUrl);
           const ct = probe.headers.get('Content-Type') || '';
@@ -378,19 +430,22 @@ html = r"""<!doctype html>
             _cardData[id].hasPdf = false;
             showPdfError(id, msg, markdownFallback);
           } else {
-            // PDF exists — mount iframe
             _cardData[id].hasPdf = true;
             const wrap = document.getElementById('pdf-wrap-' + id);
+            const lo = document.getElementById('pdf-loader-' + id);
             if (wrap) {
-              const iframe = document.createElement('iframe');
-              iframe.id = 'pdf-frame-' + id;
-              iframe.title = 'Syllabus ' + code;
-              iframe.onload = function() {
-                const lo = document.getElementById('pdf-loader-' + id);
-                if (lo) lo.classList.add('hidden');
-              };
-              iframe.src = pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
-              wrap.appendChild(iframe);
+              const rendered = await renderPdfWithPdfJs(pdfUrl, wrap, lo);
+              if (!rendered) {
+                // Fallback to iframe if PDF.js failed
+                const iframe = document.createElement('iframe');
+                iframe.id = 'pdf-frame-' + id;
+                iframe.title = 'Syllabus ' + code;
+                iframe.onload = function() {
+                  if (lo) lo.classList.add('hidden');
+                };
+                iframe.src = pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
+                wrap.appendChild(iframe);
+              }
             }
           }
         } catch (err) {
@@ -405,13 +460,10 @@ html = r"""<!doctype html>
         wrap.classList.add('markdown-mode');
         wrap.innerHTML =
           '<div class="pdf-markdown-body">' +
-            (isMobile ? '<div class="pdf-markdown-notice">' +
-              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
-              'Syllabus preview (tap Expand for full view)' +
-            '</div>' : '<div class="pdf-markdown-notice">' +
+            '<div class="pdf-markdown-notice">' +
               '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
               'PDF not available \u2014 showing extracted syllabus data' +
-            '</div>') +
+            '</div>' +
             '<div class="content" style="font-size:.875rem">' + marked.parse(md || '') + '</div>' +
           '</div>';
       }
@@ -461,15 +513,26 @@ html = r"""<!doctype html>
 
         body.innerHTML = '';
 
-        if (data.hasPdf && !isMobile) {
-          // Show PDF in full-screen iframe
-          const iframe = document.createElement('iframe');
-          iframe.style.cssText = 'width:100%;height:100%;border:none;flex:1;min-height:70dvh';
-          iframe.title = 'Syllabus ' + data.code;
-          iframe.src = data.pdfUrl + '#toolbar=1&navpanes=0&scrollbar=1&view=FitH';
-          body.appendChild(iframe);
+        if (data.hasPdf) {
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'position:relative;width:100%;height:100%;flex:1;min-height:70dvh;background:#525659;overflow:hidden';
+          const loader = document.createElement('div');
+          loader.className = 'pdf-loader';
+          loader.innerHTML = '<div class="pdf-spinner"></div><span>Loading syllabus\u2026</span>';
+          wrap.appendChild(loader);
+          body.appendChild(wrap);
+
+          renderPdfWithPdfJs(data.pdfUrl, wrap, loader).then(rendered => {
+            if (!rendered) {
+              wrap.innerHTML = '';
+              const iframe = document.createElement('iframe');
+              iframe.style.cssText = 'width:100%;height:100%;border:none;flex:1;min-height:70dvh';
+              iframe.title = 'Syllabus ' + data.code;
+              iframe.src = data.pdfUrl;
+              wrap.appendChild(iframe);
+            }
+          });
         } else {
-          // Show markdown
           body.innerHTML =
             '<div class="pdf-markdown-body" style="flex:1;overflow-y:auto;max-height:calc(92dvh - 64px)">' +
               '<div class="content">' + marked.parse(data.markdownFallback || '') + '</div>' +
